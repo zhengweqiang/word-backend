@@ -42,6 +42,7 @@ export function ClassroomsPage() {
     const auth = useAuth();
     const isAdmin = createMemo(() => auth.user()?.role === "ADMIN");
     const [feedback, setFeedback] = createSignal("");
+    const [createError, setCreateError] = createSignal("");
     const [isCreateDialogOpen, setIsCreateDialogOpen] = createSignal(false);
     const [keyword, setKeyword] = createSignal("");
     const [sortBy, setSortBy] = createSignal<"createdAt" | "updatedAt" | "name">("createdAt");
@@ -118,6 +119,16 @@ export function ClassroomsPage() {
     );
 
     const currentClassrooms = createMemo(() => classroomsPage()?.content ?? []);
+    const teacherOptions = createMemo(() => optionsData()?.teachers ?? []);
+    const canCreateClassroom = createMemo(() => {
+        if (!form.name.trim()) {
+            return false;
+        }
+        if (isAdmin()) {
+            return teacherOptions().length > 0 && Boolean(form.teacherId);
+        }
+        return true;
+    });
     const selectedClassroom = createMemo(() => {
         const classroomId = selectedClassroomId();
         if (!classroomId) {
@@ -174,21 +185,27 @@ export function ClassroomsPage() {
 
     const closeCreateDialog = () => {
         setIsCreateDialogOpen(false);
+        setCreateError("");
         setForm(createDefaultForm());
     };
 
     const handleCreate = async (event: SubmitEvent) => {
         event.preventDefault();
         setFeedback("");
-        await api.createClassroom({
-            name: form.name.trim(),
-            description: form.description.trim() || undefined,
-            teacherId: form.teacherId ? Number(form.teacherId) : undefined,
-        });
-        setFeedback("班级已创建。");
-        setCurrentPage(1);
-        await refetchClassrooms();
-        closeCreateDialog();
+        setCreateError("");
+        try {
+            await api.createClassroom({
+                name: form.name.trim(),
+                description: form.description.trim() || undefined,
+                teacherId: form.teacherId ? Number(form.teacherId) : undefined,
+            });
+            setFeedback("班级已创建。");
+            setCurrentPage(1);
+            await refetchClassrooms();
+            closeCreateDialog();
+        } catch (error) {
+            setCreateError(error instanceof Error ? error.message : "创建班级失败，请稍后重试。");
+        }
     };
 
     const handleKeywordInput = (value: string) => {
@@ -578,16 +595,39 @@ export function ClassroomsPage() {
                                 <Show when={isAdmin()}>
                                     <div class="space-y-2">
                                         <Label>负责老师</Label>
-                                        <select
-                                            class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
-                                            value={form.teacherId}
-                                            onChange={(event) => setForm("teacherId", event.currentTarget.value)}
+                                        <Show
+                                            when={optionsData()}
+                                            fallback={<p class="text-sm text-muted-foreground">正在加载老师数据...</p>}
                                         >
-                                            <option value="">选择老师</option>
-                                            <For each={optionsData()?.teachers || []}>
-                                                {(teacher) => <option value={teacher.id}>{teacher.displayName}</option>}
-                                            </For>
-                                        </select>
+                                            <Show
+                                                when={teacherOptions().length > 0}
+                                                fallback={
+                                                    <EmptyState
+                                                        title="暂无可用老师"
+                                                        description="管理员创建班级前需要先创建老师账号。"
+                                                        actions={
+                                                            <a
+                                                                class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background/80 px-4 py-2 text-sm font-medium text-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                                href="/users"
+                                                            >
+                                                                去用户管理
+                                                            </a>
+                                                        }
+                                                    />
+                                                }
+                                            >
+                                                <select
+                                                    class="h-11 w-full rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                                    value={form.teacherId}
+                                                    onChange={(event) => setForm("teacherId", event.currentTarget.value)}
+                                                >
+                                                    <option value="">选择老师</option>
+                                                    <For each={teacherOptions()}>
+                                                        {(teacher) => <option value={teacher.id}>{teacher.displayName}</option>}
+                                                    </For>
+                                                </select>
+                                            </Show>
+                                        </Show>
                                     </div>
                                 </Show>
                             </div>
@@ -598,11 +638,14 @@ export function ClassroomsPage() {
                                     onInput={(event) => setForm("description", event.currentTarget.value)}
                                 />
                             </div>
+                            <Show when={createError()}>
+                                <Alert class="border-destructive/30 bg-destructive/10 text-destructive">{createError()}</Alert>
+                            </Show>
                             <div class="flex flex-wrap justify-end gap-3 pt-2">
                                 <Button variant="outline" onClick={closeCreateDialog} type="button">
                                     取消
                                 </Button>
-                                <Button type="submit">创建班级</Button>
+                                <Button disabled={!canCreateClassroom()} type="submit">创建班级</Button>
                             </div>
                         </form>
                     </div>

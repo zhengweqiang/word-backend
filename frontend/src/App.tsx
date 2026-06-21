@@ -48,6 +48,7 @@ import { StudyPlanManagementModal } from './components/StudyPlanManagementModal'
 import { UserManagementModal } from './components/UserManagementModal';
 import { WordDetail } from './components/WordDetail';
 import { WordList } from './components/WordList';
+import { postLoginDestination } from './auth/routing';
 import { StudentWorkspace } from './student/StudentWorkspace';
 import './App.css';
 
@@ -66,12 +67,12 @@ const FALLBACK_LOGIN_QUOTE: FamousQuote = {
   author: 'Leonardo da Vinci',
 };
 
-function redirectToAdminPortal() {
+function redirectTo(destination: string) {
   if (typeof window === 'undefined') {
     return;
   }
 
-  window.location.replace('/admin/');
+  window.location.replace(destination);
 }
 
 function App() {
@@ -211,8 +212,9 @@ function App() {
       try {
         const user = await authApi.me();
         if (mounted) {
-          if (user.role === 'ADMIN') {
-            redirectToAdminPortal();
+          const destination = postLoginDestination(user.role);
+          if (destination !== '/') {
+            redirectTo(destination);
             return;
           }
           setCurrentUser(user);
@@ -687,8 +689,9 @@ function App() {
       storeToken(response.token);
       storeLoginQuote(response.quote);
       setLoginQuote(response.quote);
-      if (response.user.role === 'ADMIN') {
-        redirectToAdminPortal();
+      const destination = postLoginDestination(response.user.role);
+      if (destination !== '/') {
+        redirectTo(destination);
         return;
       }
       setCurrentUser(response.user);

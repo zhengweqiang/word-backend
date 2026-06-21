@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 import solid from "vite-plugin-solid";
 
 export default defineConfig({
-  base: "/",
+  base: "/admin/",
   plugins: [solid()],
   test: {
     environment: "jsdom",

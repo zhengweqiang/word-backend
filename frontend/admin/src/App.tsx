@@ -5,7 +5,6 @@ import { AiConfigsPage } from "@/pages/ai-configs-page";
 import { ClassroomsPage } from "@/pages/classrooms-page";
 import { DictionariesPage } from "@/pages/dictionaries-page";
 import { ImportCenterPage } from "@/pages/import-center-page";
-import { LoginPage } from "@/pages/login-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import { OverviewPage } from "@/pages/overview-page";
 import { StudyPlansPage } from "@/pages/study-plans-page";
@@ -14,8 +13,7 @@ import { UsersPage } from "@/pages/users-page";
 function App() {
     return (
         <AuthProvider>
-            <Router>
-                <Route path="/login" component={LoginPage} />
+            <Router base="/admin">
                 <Route path="/" component={ProtectedLayout}>
                     <Route path="/" component={OverviewPage} />
                     <Route path="/users" component={UsersPage} />

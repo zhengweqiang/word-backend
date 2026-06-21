@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { Eye, EyeSlash } from '@phosphor-icons/react';
 import type { FamousQuote } from '../types';
 
 const INSIGHT_COPY = [
-  '管理员可创建账号并分配角色',
-  '教师可管理自己的词书与学生',
-  '学生只看到被分配的学习资源',
+  '管理员进入后台总览与系统配置',
+  '教师进入后台管理班级、词书和学习计划',
+  '学生进入专属学习台完成每日任务',
 ];
 
 interface LoginScreenProps {
@@ -15,8 +16,9 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ loading, error, quote, onSubmit }: LoginScreenProps) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123456');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -27,10 +29,11 @@ export function LoginScreen({ loading, error, quote, onSubmit }: LoginScreenProp
     <div className="auth-shell">
       <section className="auth-shell__hero">
         <div className="auth-shell__hero-copy">
-          <p className="app__eyebrow">Word Atelier Access</p>
-          <h1 className="auth-shell__title">"{quote.text}"</h1>
-          <p className="auth-shell__subtitle">{quote.translation}</p>
-          <p className="auth-shell__quote-author">- {quote.author}</p>
+          <p className="auth-shell__eyebrow">Word Atelier Access</p>
+          <h1 className="auth-shell__title">统一入口，自动进入你的工作台。</h1>
+          <p className="auth-shell__subtitle">
+            管理员和老师登录后进入后台工作台，学生登录后进入学习台。账号角色由系统自动识别。
+          </p>
         </div>
 
         <div className="auth-shell__insights">
@@ -41,15 +44,22 @@ export function LoginScreen({ loading, error, quote, onSubmit }: LoginScreenProp
             </div>
           ))}
         </div>
+
+        <div className="auth-shell__quote">
+          <p className="auth-shell__quote-text">“{quote.text}”</p>
+          <p className="auth-shell__quote-translation">{quote.translation}</p>
+          <p className="auth-shell__quote-author">{quote.author}</p>
+        </div>
       </section>
 
       <section className="auth-shell__panel">
         <div className="auth-shell__panel-header">
           <div>
-            <p className="app__eyebrow">Sign In</p>
-            <h2 className="auth-shell__panel-title">进入你的学习台面</h2>
+            <p className="auth-shell__eyebrow auth-shell__eyebrow--panel">Sign In</p>
+            <h2 className="auth-shell__panel-title">登录 Word Atelier</h2>
+            <p className="auth-shell__panel-subtitle">一个登录页，按角色自动跳转。</p>
           </div>
-          <span className="auth-shell__badge">JWT</span>
+          <span className="auth-shell__badge">Unified</span>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -63,26 +73,39 @@ export function LoginScreen({ loading, error, quote, onSubmit }: LoginScreenProp
               placeholder="输入用户名"
               autoComplete="username"
               disabled={loading}
+              autoFocus
             />
           </label>
 
           <label className="auth-form__field">
             <span className="form__label">密码</span>
-            <input
-              className="form__input"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="输入密码"
-              autoComplete="current-password"
-              disabled={loading}
-            />
+            <span className="auth-form__password">
+              <input
+                className="form__input auth-form__password-input"
+                type={passwordVisible ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="输入密码"
+                autoComplete="current-password"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                className="auth-form__password-toggle"
+                aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                aria-pressed={passwordVisible}
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                disabled={loading}
+              >
+                {passwordVisible ? <EyeSlash size={18} weight="bold" /> : <Eye size={18} weight="bold" />}
+              </button>
+            </span>
           </label>
 
           {error && <div className="form__error">{error}</div>}
 
           <button className="btn btn--primary auth-form__submit" type="submit" disabled={loading}>
-            {loading ? '正在登录...' : '登录进入'}
+            {loading ? '正在登录...' : '登录并进入对应主页'}
           </button>
         </form>
 

@@ -1,16 +1,23 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY admin/package.json admin/package-lock.json ./admin/
+RUN npm --prefix admin ci
+
+COPY . .
+RUN npm run build
+
 FROM nginx:alpine
 
-# 删除默认nginx页面
 RUN rm -rf /usr/share/nginx/html/*
 
-# 复制预构建结果到nginx目录
-COPY dist /usr/share/nginx/html
-
-# 复制自定义nginx配置
+COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# 暴露端口
 EXPOSE 80
 
-# 启动nginx
 CMD ["nginx", "-g", "daemon off;"]

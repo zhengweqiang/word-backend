@@ -198,22 +198,40 @@ export function StudyPlansPage() {
 
                                     <div class="space-y-3">
                                         <Label>作用班级</Label>
-                                        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                            <For each={data().classrooms}>
-                                                {(classroom) => (
-                                                    <label class="flex items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 text-sm">
-                                                        <input
-                                                            checked={form.classroomIds.includes(classroom.id)}
-                                                            type="checkbox"
-                                                            onChange={(event) =>
-                                                                handleToggleClassroom(classroom.id, event.currentTarget.checked)
-                                                            }
-                                                        />
-                                                        <span>{classroom.name}</span>
-                                                    </label>
-                                                )}
-                                            </For>
-                                        </div>
+                                        <Show
+                                            when={data().classrooms.length > 0}
+                                            fallback={
+                                                <EmptyState
+                                                    title="暂无可用班级"
+                                                    description="请先在“班级管理”中创建班级，再回来创建学习计划。"
+                                                    actions={
+                                                        <a
+                                                            class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background/80 px-4 py-2 text-sm font-medium text-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                            href="/classrooms"
+                                                        >
+                                                            去班级管理
+                                                        </a>
+                                                    }
+                                                />
+                                            }
+                                        >
+                                            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                                <For each={data().classrooms}>
+                                                    {(classroom) => (
+                                                        <label class="flex items-center gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 text-sm">
+                                                            <input
+                                                                checked={form.classroomIds.includes(classroom.id)}
+                                                                type="checkbox"
+                                                                onChange={(event) =>
+                                                                    handleToggleClassroom(classroom.id, event.currentTarget.checked)
+                                                                }
+                                                            />
+                                                            <span>{classroom.name}</span>
+                                                        </label>
+                                                    )}
+                                                </For>
+                                            </div>
+                                        </Show>
                                     </div>
 
                                     <div class="grid gap-4 md:grid-cols-4">
@@ -239,13 +257,13 @@ export function StudyPlansPage() {
                                         <div class="space-y-2">
                                             <Label>复习模式</Label>
                                             <select
-                                                class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                                class="h-11 w-full rounded-lg border border-input bg-background/70 px-3 text-sm"
                                                 value={form.reviewMode}
                                                 onChange={(event) => setForm("reviewMode", event.currentTarget.value)}
                                             >
-                                                <option value="FIXED_INTERVAL">FIXED_INTERVAL</option>
-                                                <option value="EBBINGHAUS">EBBINGHAUS</option>
-                                                <option value="CUSTOM">CUSTOM</option>
+                                                <option value="FIXED_INTERVAL">固定间隔</option>
+                                                <option value="EBBINGHAUS">艾宾浩斯</option>
+                                                <option value="CUSTOM">自定义</option>
                                             </select>
                                         </div>
                                         <div class="space-y-2">
@@ -290,7 +308,7 @@ export function StudyPlansPage() {
                                         启用注意力追踪
                                     </label>
 
-                                    <Button class="w-full md:w-auto" type="submit">创建计划</Button>
+                                    <Button class="w-full md:w-auto" disabled={form.classroomIds.length === 0} type="submit">创建计划</Button>
                                 </form>
                             </CardContent>
                         </Card>

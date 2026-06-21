@@ -1,8 +1,17 @@
 import type { JSX } from "solid-js";
 import { Show } from "solid-js";
-import { Navigate } from "@solidjs/router";
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/features/auth/auth-context";
+
+function RedirectToUnifiedLogin() {
+    window.location.replace("/");
+    return null;
+}
+
+function RedirectStudentToWorkspace() {
+    window.location.replace("/");
+    return null;
+}
 
 export function ProtectedLayout(props: { children?: JSX.Element }) {
     const auth = useAuth();
@@ -21,9 +30,14 @@ export function ProtectedLayout(props: { children?: JSX.Element }) {
         >
             <Show
                 when={auth.user()}
-                fallback={<Navigate href="/login" />}
+                fallback={<RedirectToUnifiedLogin />}
             >
-                <AppShell>{props.children}</AppShell>
+                <Show
+                    when={auth.user()?.role !== "STUDENT"}
+                    fallback={<RedirectStudentToWorkspace />}
+                >
+                    <AppShell>{props.children}</AppShell>
+                </Show>
             </Show>
         </Show>
     );

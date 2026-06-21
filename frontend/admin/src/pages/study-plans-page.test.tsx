@@ -33,7 +33,7 @@ const createdPlan = {
     teacherId: 1,
     dictionaryId: 7,
     dictionaryName: "CET-4 核心词汇",
-    classroomIds: [],
+    classroomIds: [12],
     startDate: "2026-06-21",
     endDate: null,
     timezone: "Asia/Shanghai",
@@ -79,6 +79,16 @@ describe("StudyPlansPage", () => {
     });
 
     it("submits the ID selected from the searchable dictionary picker", async () => {
+        vi.mocked(api.listClassrooms).mockResolvedValue([
+            {
+                id: 12,
+                name: "高一 1 班",
+                description: null,
+                teacherId: 1,
+                teacherName: "Admin",
+                studentCount: 3,
+            },
+        ]);
         render(() => <StudyPlansPage />);
 
         fireEvent.input(await screen.findByLabelText("计划名称"), {
@@ -89,13 +99,23 @@ describe("StudyPlansPage", () => {
             target: { value: "CET-4" },
         });
         fireEvent.click(screen.getByRole("option", { name: "CET-4 核心词汇 1200 词" }));
+        fireEvent.click(screen.getByLabelText("高一 1 班"));
         fireEvent.click(screen.getByRole("button", { name: "创建计划" }));
 
         await waitFor(() => {
             expect(api.createStudyPlan).toHaveBeenCalledWith(
-                expect.objectContaining({ name: "四级计划", dictionaryId: 7 }),
+                expect.objectContaining({ name: "四级计划", dictionaryId: 7, classroomIds: [12] }),
             );
         });
+    });
+
+    it("shows an empty classroom state and disables creation when no classrooms are available", async () => {
+        render(() => <StudyPlansPage />);
+
+        expect(await screen.findByText("暂无可用班级")).toBeInTheDocument();
+        expect(screen.getByText("请先在“班级管理”中创建班级，再回来创建学习计划。")).toBeInTheDocument();
+        expect(screen.getByRole("link", { name: "去班级管理" })).toHaveAttribute("href", "/classrooms");
+        expect(screen.getByRole("button", { name: "创建计划" })).toBeDisabled();
     });
 
     it("keeps the visible wordbook field purpose associated with the selected trigger", async () => {
@@ -110,5 +130,22 @@ describe("StudyPlansPage", () => {
             "for",
             "study-plan-dictionary",
         );
+    });
+
+    it("shows review mode choices in Chinese while preserving backend values", async () => {
+        render(() => <StudyPlansPage />);
+
+        expect(await screen.findByRole("option", { name: "固定间隔" })).toHaveValue("FIXED_INTERVAL");
+        expect(screen.getByRole("option", { name: "艾宾浩斯" })).toHaveValue("EBBINGHAUS");
+        expect(screen.getByRole("option", { name: "自定义" })).toHaveValue("CUSTOM");
+    });
+
+    it("shows the review mode picker with the same full-width layout as other form controls", async () => {
+        render(() => <StudyPlansPage />);
+
+        const reviewModeSelect = (await screen.findByRole("option", { name: "固定间隔" }))
+            .closest("select");
+
+        expect(reviewModeSelect).toHaveClass("w-full");
     });
 });

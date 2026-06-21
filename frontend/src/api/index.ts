@@ -52,7 +52,7 @@ export interface WordListProcessResult {
 }
 
 const API_BASE = '/api';
-const TOKEN_STORAGE_KEY = 'word_atelier_token';
+export const TOKEN_STORAGE_KEY = 'word_atelier_token';
 const LOGIN_QUOTE_STORAGE_KEY = 'word_atelier_login_quote';
 
 let unauthorizedHandler: (() => void) | null = null;

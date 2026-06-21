@@ -57,17 +57,13 @@ docker-compose logs -f app
 # Rebuild and restart
 docker-compose up -d --build
 
-# Rebuild and restart the user frontend after changes under frontend/
+# Rebuild and restart the unified frontend after changes under frontend/
 docker-compose up -d --build frontend
-
-# Rebuild and restart the admin frontend after changes under admin-frontend/
-docker-compose up -d --build admin-frontend
 ```
 
 ### Frontend Restart Requirement
-- After modifying files under `frontend/`, rebuild and restart the `frontend` container with Docker before considering the change complete.
-- After modifying files under `admin-frontend/`, rebuild and restart the `admin-frontend` container with Docker before considering the change complete.
-- If both frontend projects are changed, run `docker-compose up -d --build frontend admin-frontend`.
+- After modifying files under `frontend/`, rebuild and restart the unified `frontend` container with Docker before considering the change complete.
+- Admin frontend code now lives under `frontend/admin/`; it is built and served by the same `frontend` container.
 
 ## Code Style Guidelines
 

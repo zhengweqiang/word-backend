@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:root && npm run build:admin",
+    "build:root": "tsc -b && vite build",
+    "build:admin": "npm --prefix admin run build -- --outDir ../dist/admin --emptyOutDir",
     "lint": "eslint .",
     "test": "node --test --experimental-strip-types tests/*.test.mjs",
     "preview": "vite preview"

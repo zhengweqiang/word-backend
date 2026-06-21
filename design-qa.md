@@ -1,7 +1,7 @@
 # Student Workspace Design QA
 
 - Source visual truth: `/Users/wyn/code/word-backend/docs/superpowers/prototypes/student-post-login-mobile/artifacts/home-390x844.jpg` and `study-390x844.jpg`
-- Implementation: `http://localhost:8084/`
+- Implementation: `http://localhost:8083/`
 - Viewport: `390 x 844` (primary), `320 x 740` (responsive check)
 - State: authenticated student, real dashboard and study queue data
 - Full-view comparison: `docs/superpowers/artifacts/student-home-comparison-390.png`

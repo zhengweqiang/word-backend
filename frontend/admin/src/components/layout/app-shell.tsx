@@ -63,7 +63,7 @@ export function AppShell(props: AppShellProps) {
                             <div>
                                 <h1 class="font-display text-2xl font-semibold tracking-tight">后台工作台</h1>
                                 <p class="mt-2 text-sm leading-6 text-white/65">
-                                    面向管理员与老师的独立控制面板，围绕班级、词书和学习计划编排。
+                                    面向管理员与老师的控制面板，围绕班级、词书和学习计划编排。
                                 </p>
                             </div>
                         </div>
