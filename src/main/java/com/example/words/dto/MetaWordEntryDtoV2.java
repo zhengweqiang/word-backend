@@ -21,6 +21,8 @@ public class MetaWordEntryDtoV2 {
     private String word;
     
     private PhoneticDto phonetic;
+
+    private SyllableDetailDto syllableDetail;
     
     private List<PartOfSpeechDto> partOfSpeech;
     

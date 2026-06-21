@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Dictionary, User } from '../types';
 
 interface CreateExamModalProps {
@@ -20,35 +20,27 @@ export function CreateExamModal({
   onClose,
   onStart,
 }: CreateExamModalProps) {
-  const [questionCount, setQuestionCount] = useState(10);
+  const [questionChoice, setQuestionChoice] = useState<{ dictionaryId: number; value: number } | null>(null);
   const [targetUserId, setTargetUserId] = useState<number | ''>('');
-
-  useEffect(() => {
-    if (!dictionary) {
-      return;
-    }
-    const suggestedCount = Math.max(1, Math.min(dictionary.wordCount || 10, 10));
-    setQuestionCount(suggestedCount);
-  }, [dictionary]);
-
-  useEffect(() => {
-    if (availableStudents.length === 0) {
-      setTargetUserId('');
-      return;
-    }
-    setTargetUserId(availableStudents[0].id);
-  }, [availableStudents]);
 
   if (!isOpen || !dictionary) {
     return null;
   }
 
+  const suggestedCount = Math.max(1, Math.min(dictionary.wordCount || 10, 10));
+  const questionCount = questionChoice?.dictionaryId === dictionary.id
+    ? questionChoice.value
+    : suggestedCount;
+  const selectedStudentId = availableStudents.some((student) => student.id === targetUserId)
+    ? targetUserId
+    : (availableStudents[0]?.id ?? '');
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (targetUserId === '') {
+    if (selectedStudentId === '') {
       return;
     }
-    await onStart(questionCount, targetUserId);
+    await onStart(questionCount, selectedStudentId);
   };
 
   return (
@@ -80,7 +72,10 @@ export function CreateExamModal({
               min={1}
               max={Math.max(dictionary.wordCount || 1, 1)}
               value={questionCount}
-              onChange={(event) => setQuestionCount(Math.max(1, Number(event.target.value) || 1))}
+              onChange={(event) => setQuestionChoice({
+                dictionaryId: dictionary.id,
+                value: Math.max(1, Number(event.target.value) || 1),
+              })}
               disabled={loading}
             />
           </div>
@@ -92,7 +87,7 @@ export function CreateExamModal({
             <select
               id="targetUserId"
               className="form__select"
-              value={targetUserId}
+              value={selectedStudentId}
               onChange={(event) => setTargetUserId(Number(event.target.value))}
               disabled={loading || availableStudents.length === 0}
             >
@@ -117,7 +112,7 @@ export function CreateExamModal({
             <button
               type="submit"
               className="btn btn--primary"
-              disabled={loading || availableStudents.length === 0 || targetUserId === ''}
+              disabled={loading || availableStudents.length === 0 || selectedStudentId === ''}
             >
               {loading ? '正在出题...' : '开始考试'}
             </button>

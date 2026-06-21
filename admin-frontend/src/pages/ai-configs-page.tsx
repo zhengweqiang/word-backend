@@ -12,7 +12,13 @@ import { PageHeader } from "@/components/shared/page-header";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { AiConfigResponse, AiConfigStatus, CreateAiConfigPayload, UpdateAiConfigPayload } from "@/types/api";
+import type {
+    AiConfigResponse,
+    AiConfigStatus,
+    CreateAiConfigPayload,
+    SyllableBackfillResponse,
+    UpdateAiConfigPayload,
+} from "@/types/api";
 
 type FormState = {
     providerName: string;
@@ -61,6 +67,8 @@ export function AiConfigsPage() {
     const [chatInput, setChatInput] = createSignal("你好，请回复 test-ok。");
     const [chatSending, setChatSending] = createSignal(false);
     const [chatHistory, setChatHistory] = createSignal<ChatExchange[]>([]);
+    const [backfillRunning, setBackfillRunning] = createSignal(false);
+    const [backfillResult, setBackfillResult] = createSignal<SyllableBackfillResponse | null>(null);
     const [form, setForm] = createStore<FormState>(createEmptyForm());
 
     const selectedConfig = createMemo(
@@ -277,6 +285,21 @@ export function AiConfigsPage() {
         }
     };
 
+    const handleSyllableBackfill = async () => {
+        setBackfillRunning(true);
+        setBackfillResult(null);
+        setFeedback("");
+        setError("");
+
+        try {
+            setBackfillResult(await api.backfillSyllables(200));
+        } catch (backfillError) {
+            setError(backfillError instanceof Error ? backfillError.message : "音节回填失败");
+        } finally {
+            setBackfillRunning(false);
+        }
+    };
+
     if (auth.user()?.role !== "ADMIN") {
         return (
             <section class="space-y-6">
@@ -317,6 +340,44 @@ export function AiConfigsPage() {
             <Show when={error()}>
                 <Alert class="border-destructive/20 bg-destructive/10 text-destructive">{error()}</Alert>
             </Show>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>音节数据回填</CardTitle>
+                    <CardDescription>
+                        为已发布学习计划中缺少音节的单词生成结构化英美音拆读数据。单次最多处理 200 个，校验失败的词不会写入。
+                    </CardDescription>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <p class="text-sm text-muted-foreground">需要已启用的默认 AI 配置。任务会逐词处理，单个失败不会中断整批。</p>
+                        <Button onClick={() => void handleSyllableBackfill()} disabled={backfillRunning()}>
+                            {backfillRunning() ? "正在回填..." : "回填音节"}
+                        </Button>
+                    </div>
+                    <Show when={backfillResult()}>
+                        {(result) => (
+                            <div class="space-y-3 border-t border-border/80 pt-4">
+                                <p class="font-medium text-foreground">已更新 {result().updated} / {result().attempted} 个单词</p>
+                                <p class="text-sm text-muted-foreground">
+                                    跳过 {result().skipped} 个，失败 {result().failures.length} 个。
+                                </p>
+                                <Show when={result().failures.length > 0}>
+                                    <div class="space-y-2" role="status">
+                                        <For each={result().failures}>
+                                            {(failure) => (
+                                                <p class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                                                    {failure.word}：{failure.reason}
+                                                </p>
+                                            )}
+                                        </For>
+                                    </div>
+                                </Show>
+                            </div>
+                        )}
+                    </Show>
+                </CardContent>
+            </Card>
 
             <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
                 <Card>

@@ -81,6 +81,17 @@ public class AiPromptService {
                     "uk": "/英式音标/",
                     "us": "/美式音标/"
                   },
+                  "syllableDetail": {
+                    "segments": [
+                      {
+                        "text": "按拼写顺序拆分的音节",
+                        "ukPhonetic": "/英式音节音标/",
+                        "usPhonetic": "/美式音节音标/",
+                        "ukAudioUrl": null,
+                        "usAudioUrl": null
+                      }
+                    ]
+                  },
                   "partOfSpeech": [
                     {
                       "pos": "noun",
@@ -108,6 +119,7 @@ public class AiPromptService {
                 3. translation 放在 definitions.translation 中，不要额外扩展字段。
                 4. exampleSentences 尽量给一个常见、自然的例句。
                 5. difficulty 取 1-5 的整数，默认按常见学习难度估计。
+                6. syllableDetail.segments 必须按顺序拼接后严格还原 word；无法确认时返回空数组。
                 """.formatted(word, word);
 
         return List.of(

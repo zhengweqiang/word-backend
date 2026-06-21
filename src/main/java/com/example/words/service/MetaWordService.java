@@ -7,6 +7,8 @@ import com.example.words.model.Dictionary;
 import com.example.words.model.DictionaryCreationType;
 import com.example.words.model.DictionaryWord;
 import com.example.words.model.MetaWord;
+import com.example.words.model.SyllableDetail;
+import com.example.words.model.SyllableSegment;
 import com.example.words.model.Phonetic;
 import com.example.words.model.PartOfSpeech;
 import com.example.words.model.Definition;
@@ -451,6 +453,21 @@ public class MetaWordService {
                 metaWord.setDifficulty(entry.getDifficulty());
                 shouldSave = true;
             }
+        }
+
+        if (entry.getSyllableDetail() != null) {
+            metaWord.setSyllableDetail(new SyllableDetail(
+                    entry.getSyllableDetail().getSegments() == null
+                            ? List.of()
+                            : entry.getSyllableDetail().getSegments().stream()
+                                    .map(segment -> new SyllableSegment(
+                                            segment.getText(),
+                                            segment.getUkPhonetic(),
+                                            segment.getUsPhonetic(),
+                                            segment.getUkAudioUrl(),
+                                            segment.getUsAudioUrl()))
+                                    .toList()));
+            shouldSave = true;
         }
 
         if (shouldSave) {

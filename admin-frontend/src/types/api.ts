@@ -304,6 +304,19 @@ export interface AiChatResponse {
     reply: string;
 }
 
+export interface SyllableBackfillFailureResponse {
+    metaWordId: number;
+    word: string;
+    reason: string;
+}
+
+export interface SyllableBackfillResponse {
+    attempted: number;
+    updated: number;
+    skipped: number;
+    failures: SyllableBackfillFailureResponse[];
+}
+
 export interface GenerateWordDetailsPayload {
     configId?: number;
     word: string;

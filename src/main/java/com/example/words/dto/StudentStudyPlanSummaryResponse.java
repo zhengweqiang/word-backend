@@ -17,6 +17,7 @@ public class StudentStudyPlanSummaryResponse {
     private Long studentStudyPlanId;
     private Long studyPlanId;
     private String planName;
+    private LocalDateTime planPublishedAt;
     private Long dictionaryId;
     private String dictionaryName;
     private StudentStudyPlanStatus status;

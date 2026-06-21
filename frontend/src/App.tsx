@@ -19,7 +19,6 @@ import {
   userApi,
 } from './api';
 import type {
-  AiConfig,
   BooksImportBatchFile,
   BooksImportConflict,
   BooksImportJob,
@@ -49,6 +48,7 @@ import { StudyPlanManagementModal } from './components/StudyPlanManagementModal'
 import { UserManagementModal } from './components/UserManagementModal';
 import { WordDetail } from './components/WordDetail';
 import { WordList } from './components/WordList';
+import { StudentWorkspace } from './student/StudentWorkspace';
 import './App.css';
 
 type MobilePanel = 'library' | 'words';
@@ -1035,7 +1035,7 @@ function App() {
     setAvailableClassrooms(classrooms);
   }, []);
 
-  const handleAiConfigsChanged = useCallback(async (_configs?: AiConfig[]) => {
+  const handleAiConfigsChanged = useCallback(async () => {
     try {
       await aiConfigApi.list();
     } catch {
@@ -1059,6 +1059,16 @@ function App() {
         error={authError}
         quote={displayedQuote}
         onSubmit={handleLogin}
+      />
+    );
+  }
+
+  if (isStudent) {
+    return (
+      <StudentWorkspace
+        user={currentUser}
+        dictionaries={dictionaries}
+        onSignOut={handleSignOut}
       />
     );
   }

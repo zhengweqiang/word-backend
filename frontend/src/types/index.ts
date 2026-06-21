@@ -6,9 +6,28 @@ export interface MetaWord {
   partOfSpeech?: string;
   exampleSentence?: string;
   translation?: string;
+  phoneticDetail?: PhoneticDetail | null;
+  syllableDetail?: SyllableDetail | null;
   difficulty?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PhoneticDetail {
+  uk?: string | null;
+  us?: string | null;
+}
+
+export interface SyllableSegment {
+  text: string;
+  ukPhonetic?: string | null;
+  usPhonetic?: string | null;
+  ukAudioUrl?: string | null;
+  usAudioUrl?: string | null;
+}
+
+export interface SyllableDetail {
+  segments: SyllableSegment[];
 }
 
 export interface MetaWordEntry {
@@ -473,6 +492,7 @@ export interface StudentStudyPlanSummary {
   studentStudyPlanId: number;
   studyPlanId: number;
   planName: string;
+  planPublishedAt?: string | null;
   dictionaryId: number;
   dictionaryName: string;
   status: StudentStudyPlanStatus;
@@ -489,12 +509,19 @@ export interface StudentStudyPlanSummary {
 }
 
 export interface StudyTaskItem {
+  studyDayTaskItemId: number;
   metaWordId: number;
   word?: string | null;
+  definition?: string | null;
   translation?: string | null;
+  partOfSpeech?: string | null;
+  exampleSentence?: string | null;
   phonetic?: string | null;
+  phoneticDetail?: PhoneticDetail | null;
+  syllableDetail?: SyllableDetail | null;
   taskType: StudyTaskType;
   phase: number;
+  dueDate?: string | null;
 }
 
 export interface StudyTask {
@@ -521,4 +548,49 @@ export interface RecordStudyPayload {
   idleSeconds: number;
   interactionCount: number;
   attentionState: AttentionState;
+}
+
+export interface StudentDashboardReminder {
+  code: 'UNFINISHED_TODAY_TASK' | 'OVERDUE_REVIEW';
+  message: string;
+  count: number;
+}
+
+export interface StudentDashboardTaskItem {
+  studentStudyPlanId: number;
+  studyDayTaskItemId: number;
+  studyPlanId: number;
+  planName: string;
+  planPublishedAt?: string | null;
+  metaWordId: number;
+  word?: string | null;
+  definition?: string | null;
+  translation?: string | null;
+  partOfSpeech?: string | null;
+  exampleSentence?: string | null;
+  phonetic?: string | null;
+  phoneticDetail?: PhoneticDetail | null;
+  syllableDetail?: SyllableDetail | null;
+  taskType: StudyTaskType;
+  phase: number;
+  dueDate?: string | null;
+  attemptCount: number;
+}
+
+export interface StudentDashboard {
+  taskDate?: string | null;
+  hasPlans: boolean;
+  allTasksCompleted: boolean;
+  overdueCount: number;
+  reviewCount: number;
+  newCount: number;
+  completedCount: number;
+  totalCount: number;
+  completionRate: number;
+  reminders: StudentDashboardReminder[];
+  queue: StudentDashboardTaskItem[];
+}
+
+export interface StudentDashboardRecordPayload extends RecordStudyPayload {
+  studentStudyPlanId: number;
 }

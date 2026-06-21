@@ -29,6 +29,18 @@ public interface MetaWordRepository extends JpaRepository<MetaWord, Long> {
 
     List<MetaWord> findByWordStartingWith(String prefix);
 
+    @Query(value = """
+            SELECT DISTINCT m.*
+            FROM meta_words m
+            JOIN dictionary_words dw ON dw.meta_word_id = m.id
+            JOIN study_plans sp ON sp.dictionary_id = dw.dictionary_id
+            WHERE sp.status = 'PUBLISHED'
+              AND m.syllable_detail IS NULL
+            ORDER BY m.id
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<MetaWord> findPublishedPlanWordsMissingSyllables(@Param("limit") int limit);
+
     @Query(value = "SELECT m.* FROM meta_words m WHERE m.id IN (SELECT dw.meta_word_id FROM dictionary_words dw WHERE dw.dictionary_id = :dictionaryId) LIMIT :limit OFFSET :offset", nativeQuery = true)
     List<MetaWord> findByDictionaryIdWithPagination(@Param("dictionaryId") Long dictionaryId, @Param("limit") int limit, @Param("offset") int offset);
 

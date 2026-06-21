@@ -57,6 +57,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -404,7 +405,7 @@ public class StudyPlanService {
             studyDayTask.setStartedAt(now);
         }
 
-        if (taskItem.getCompletedAt() == null) {
+        if (StudyTaskCompletionPolicy.completesTask(request.getResult()) && taskItem.getCompletedAt() == null) {
             taskItem.setCompletedAt(now);
             studyDayTaskItemRepository.save(taskItem);
             studyDayTask.setCompletedCount(studyDayTask.getCompletedCount() + 1);
@@ -427,6 +428,22 @@ public class StudyPlanService {
         return studentAttentionDailyStatRepository.findByStudentStudyPlanIdOrderByTaskDateDesc(studentStudyPlanId).stream()
                 .map(this::toStudentAttentionDailyStatResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> countTodayAttempts(
+            Long studentStudyPlanId,
+            LocalDate taskDate,
+            AppUser actor) {
+        StudentStudyPlan studentStudyPlan = getStudentStudyPlanEntity(studentStudyPlanId);
+        ensureStudentOwnsPlan(actor, studentStudyPlan);
+        Map<Long, Integer> attempts = new HashMap<>();
+        for (StudyRecord record : studyRecordRepository.findByStudentStudyPlanIdAndTaskDate(
+                studentStudyPlanId,
+                taskDate)) {
+            attempts.merge(record.getMetaWordId(), 1, Integer::sum);
+        }
+        return attempts;
     }
 
     @Transactional(readOnly = true)
@@ -622,6 +639,7 @@ public class StudyPlanService {
                 studentStudyPlan.getId(),
                 studyPlan.getId(),
                 studyPlan.getName(),
+                studyPlan.getCreatedAt(),
                 dictionary.getId(),
                 dictionary.getName(),
                 studentStudyPlan.getStatus(),
@@ -656,12 +674,19 @@ public class StudyPlanService {
             MetaWord metaWord = metaWordMap.get(taskItem.getMetaWordId());
             StudyWordProgress progress = progressMap.get(taskItem.getMetaWordId());
             queue.add(new StudyTaskItemResponse(
+                    taskItem.getId(),
                     taskItem.getMetaWordId(),
                     metaWord == null ? null : metaWord.getWord(),
+                    metaWord == null ? null : metaWord.getDefinition(),
                     metaWord == null ? null : metaWord.getTranslation(),
+                    metaWord == null ? null : metaWord.getPartOfSpeech(),
+                    metaWord == null ? null : metaWord.getExampleSentence(),
                     metaWord == null ? null : metaWord.getPhonetic(),
+                    metaWord == null ? null : metaWord.getPhoneticDetail(),
+                    metaWord == null ? null : metaWord.getSyllableDetail(),
                     taskItem.getTaskType(),
-                    progress == null ? 0 : progress.getPhase()
+                    progress == null ? 0 : progress.getPhase(),
+                    progress == null ? null : progress.getNextReviewDate()
             ));
         }
 

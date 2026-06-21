@@ -24,6 +24,7 @@ import type {
     StudyPlanOverviewResponse,
     StudyPlanResponse,
     StudyPlanStudentSummaryResponse,
+    SyllableBackfillResponse,
     UpdateAiConfigPayload,
     UserResponse,
     WordListProcessResult,
@@ -261,4 +262,6 @@ export const api = {
         request<AiChatResponse>("/api/ai/chat", { method: "POST", body: payload }),
     generateWordDetails: (payload: GenerateWordDetailsPayload) =>
         request<GenerateWordDetailsResponse>("/api/ai/generate-word-details", { method: "POST", body: payload }),
+    backfillSyllables: (limit = 200) =>
+        request<SyllableBackfillResponse>(`/api/admin/syllables/backfill?limit=${limit}`, { method: "POST" }),
 };

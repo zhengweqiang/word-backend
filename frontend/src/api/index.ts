@@ -29,6 +29,8 @@ import type {
   GenerateReadingPayload,
   GenerateReadingResponse,
   StudentAttentionDailyStat,
+  StudentDashboard,
+  StudentDashboardRecordPayload,
   StudentStudyPlanSummary,
   StudyPlan,
   StudyPlanOverview,
@@ -441,6 +443,17 @@ export const teacherApi = {
 
 export const studentApi = {
   getMyDictionaries: () => fetchJson<Dictionary[]>(`${API_BASE}/students/me/dictionaries`),
+};
+
+export const studentDashboardApi = {
+  get: () => fetchJson<StudentDashboard>(`${API_BASE}/students/me/dashboard`),
+  record: (payload: StudentDashboardRecordPayload) => fetchJson<StudentDashboard>(
+    `${API_BASE}/students/me/dashboard/records`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  ),
 };
 
 export const studyPlanApi = {

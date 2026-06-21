@@ -7,6 +7,8 @@ import com.example.words.dto.GenerateDictionaryWordWithAiResponse;
 import com.example.words.dto.InflectionDto;
 import com.example.words.dto.MetaWordEntryDto;
 import com.example.words.dto.MetaWordEntryDtoV2;
+import com.example.words.dto.SyllableDetailDto;
+import com.example.words.dto.SyllableSegmentDto;
 import com.example.words.dto.MetaWordSuggestionDto;
 import com.example.words.dto.PartOfSpeechDto;
 import com.example.words.dto.PhoneticDto;
@@ -15,6 +17,8 @@ import com.example.words.model.DictionaryWord;
 import com.example.words.model.ExampleSentence;
 import com.example.words.model.Inflection;
 import com.example.words.model.MetaWord;
+import com.example.words.model.SyllableDetail;
+import com.example.words.model.SyllableSegment;
 import com.example.words.model.PartOfSpeech;
 import com.example.words.model.Phonetic;
 import com.example.words.model.Tag;
@@ -508,6 +512,10 @@ public class DictionaryWordService {
             metaWord.setPhoneticDetail(phonetic);
         }
 
+        if (dto.getSyllableDetail() != null) {
+            metaWord.setSyllableDetail(convertSyllableDetail(dto.getSyllableDetail()));
+        }
+
         if (dto.getPartOfSpeech() != null && !dto.getPartOfSpeech().isEmpty()) {
             List<PartOfSpeech> partOfSpeechDetail = convertPartOfSpeechDtos(dto.getPartOfSpeech());
             metaWord.setPartOfSpeechDetail(partOfSpeechDetail);
@@ -515,6 +523,26 @@ public class DictionaryWordService {
         }
 
         metaWord.setDifficulty(dto.getDifficulty() != null ? dto.getDifficulty() : 2);
+    }
+
+    private SyllableDetail convertSyllableDetail(SyllableDetailDto detail) {
+        List<SyllableSegment> segments = detail.getSegments() == null
+                ? List.of()
+                : detail.getSegments().stream()
+                        .filter(Objects::nonNull)
+                        .map(this::convertSyllableSegment)
+                        .toList();
+        return new SyllableDetail(segments);
+    }
+
+    private SyllableSegment convertSyllableSegment(SyllableSegmentDto segment) {
+        return new SyllableSegment(
+                segment.getText(),
+                segment.getUkPhonetic(),
+                segment.getUsPhonetic(),
+                segment.getUkAudioUrl(),
+                segment.getUsAudioUrl()
+        );
     }
 
     private Optional<MetaWord> resolveMetaWordForV2Entry(Long preferredMetaWordId, String word) {

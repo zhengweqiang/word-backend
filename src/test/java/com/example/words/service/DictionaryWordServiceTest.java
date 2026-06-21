@@ -11,6 +11,9 @@ import static org.mockito.Mockito.when;
 
 import com.example.words.dto.MetaWordSuggestionDto;
 import com.example.words.dto.MetaWordEntryDto;
+import com.example.words.dto.MetaWordEntryDtoV2;
+import com.example.words.dto.SyllableDetailDto;
+import com.example.words.dto.SyllableSegmentDto;
 import com.example.words.model.MetaWord;
 import com.example.words.repository.DictionaryWordRepository;
 import com.example.words.repository.MetaWordRepository;
@@ -123,6 +126,38 @@ class DictionaryWordServiceTest {
         assertEquals("She picked an apple.", existingMetaWord.getExampleSentence());
         assertEquals("苹果", existingMetaWord.getTranslation());
         assertEquals(3, existingMetaWord.getDifficulty());
+        verify(metaWordRepository).save(existingMetaWord);
+    }
+
+    @Test
+    void processWordListV2ShouldPersistSyllableMetadata() {
+        MetaWord existingMetaWord = new MetaWord();
+        existingMetaWord.setId(102L);
+        existingMetaWord.setWord("resilient");
+
+        MetaWordEntryDtoV2 entry = new MetaWordEntryDtoV2();
+        entry.setWord("resilient");
+        entry.setSyllableDetail(new SyllableDetailDto(List.of(
+                new SyllableSegmentDto("re", "/rɪ/", "/rɪ/", null, null),
+                new SyllableSegmentDto("sil", "/ˈzɪl/", "/ˈzɪl/", null, null),
+                new SyllableSegmentDto("ient", "/iənt/", "/iənt/", null, null)
+        )));
+
+        when(metaWordRepository.findByNormalizedWord("resilient")).thenReturn(Optional.of(existingMetaWord));
+        when(tagService.getOrCreateDefaultChapterTagId(10L)).thenReturn(99L);
+        when(dictionaryWordRepository.findMaxEntryOrderByDictionaryIdAndChapterTagId(10L, 99L)).thenReturn(0);
+        when(metaWordRepository.save(any(MetaWord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(dictionaryWordRepository.countDistinctMetaWordIdByDictionaryId(10L)).thenReturn(1L);
+        when(dictionaryWordRepository.countByDictionaryId(10L)).thenReturn(1L);
+
+        DictionaryWordService.WordListProcessResult result = dictionaryWordService.processWordListV2(
+                10L,
+                List.of(entry)
+        );
+
+        assertEquals(1, result.getExisted());
+        assertEquals(3, existingMetaWord.getSyllableDetail().getSegments().size());
+        assertEquals("re", existingMetaWord.getSyllableDetail().getSegments().get(0).getText());
         verify(metaWordRepository).save(existingMetaWord);
     }
 
