@@ -9,21 +9,30 @@ import static org.mockito.Mockito.when;
 
 import com.example.words.dto.VideoAccessResponse;
 import com.example.words.dto.VideoResponse;
+import com.example.words.dto.StudentVideoResponse;
 import com.example.words.exception.BadRequestException;
+import com.example.words.exception.ResourceNotFoundException;
 import com.example.words.model.AppUser;
 import com.example.words.model.ResourceScopeType;
 import com.example.words.model.UserRole;
 import com.example.words.model.UserStatus;
 import com.example.words.model.VideoAccessMode;
 import com.example.words.model.VideoAsset;
+import com.example.words.model.VideoPublishStatus;
 import com.example.words.model.VideoStatus;
 import com.example.words.model.VideoStorageConfig;
+import com.example.words.model.VideoStorageProviderType;
 import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.VideoAssetRepository;
 import com.example.words.repository.VideoStorageConfigRepository;
 import com.example.words.security.AuthenticatedUser;
+import com.example.words.service.video.VideoMediaInfo;
+import com.example.words.service.video.VideoStorageGateway;
+import com.example.words.service.video.VideoStorageGatewayRegistry;
+import com.example.words.service.video.VideoUploadResult;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,10 +55,18 @@ class VideoAssetServiceTest {
     private VideoStorageConfigRepository videoStorageConfigRepository;
 
     @Mock
-    private TencentVodGateway tencentVodGateway;
+    private VideoStorageGateway tencentStorageGateway;
+
+    @Mock
+    private VideoStorageGateway volcengineStorageGateway;
+
+    private VideoStorageGatewayRegistry gatewayRegistry;
 
     @Mock
     private AppUserRepository appUserRepository;
+
+    private TeacherStudentService teacherStudentService;
+    private Set<Long> responsibleTeacherIds;
 
     private CurrentUserService currentUserService;
     private AccessControlService accessControlService;
@@ -62,6 +79,9 @@ class VideoAssetServiceTest {
     void setUp() {
         currentUserService = new CurrentUserService(appUserRepository);
         accessControlService = new AccessControlService(null, null, null);
+        when(tencentStorageGateway.providerType()).thenReturn(VideoStorageProviderType.TENCENT_VOD);
+        when(volcengineStorageGateway.providerType()).thenReturn(VideoStorageProviderType.VOLCENGINE_VOD);
+        gatewayRegistry = new VideoStorageGatewayRegistry(List.of(tencentStorageGateway, volcengineStorageGateway));
         videoStorageConfigService = new VideoStorageConfigService(null, null, null, null, null, null) {
             @Override
             public VideoStorageConfig getDefaultEnabledConfig() {
@@ -73,14 +93,27 @@ class VideoAssetServiceTest {
                 return resolvedStorageConfig;
             }
         };
+        responsibleTeacherIds = Set.of();
+        teacherStudentService = new TeacherStudentService(null, null, null, null, null) {
+            @Override
+            public Set<Long> getResponsibleTeacherIdsForStudent(Long studentId) {
+                return responsibleTeacherIds;
+            }
+
+            @Override
+            public boolean isTeacherResponsibleForStudent(Long teacherId, Long studentId) {
+                return responsibleTeacherIds.contains(teacherId);
+            }
+        };
         videoAssetService = new VideoAssetService(
                 videoAssetRepository,
                 videoStorageConfigRepository,
                 currentUserService,
                 accessControlService,
                 videoStorageConfigService,
-                tencentVodGateway,
-                appUserRepository
+                gatewayRegistry,
+                appUserRepository,
+                teacherStudentService
         );
     }
 
@@ -102,16 +135,16 @@ class VideoAssetServiceTest {
         );
 
         authenticate(actor);
-        when(tencentVodGateway.upload(any(), any(), any(), any(), any())).thenReturn(
-                new TencentVodUploadResult(
+        when(tencentStorageGateway.upload(any(), any(), any(), any(), any())).thenReturn(
+                new VideoUploadResult(
                         "file-123",
                         "https://vod.example.com/lesson.mp4",
                         "https://vod.example.com/cover.jpg",
                         false
                 )
         );
-        when(tencentVodGateway.describeMedia(config, "file-123")).thenReturn(
-                new TencentVodMediaInfo(
+        when(tencentStorageGateway.describeMedia(config, "file-123")).thenReturn(
+                new VideoMediaInfo(
                         "file-123",
                         "https://vod.example.com/lesson.mp4",
                         "https://vod.example.com/cover.jpg",
@@ -133,8 +166,85 @@ class VideoAssetServiceTest {
         assertEquals(55L, response.getId());
         assertEquals(ResourceScopeType.TEACHER, response.getScopeType());
         assertEquals(VideoStatus.READY, response.getStatus());
+        assertEquals(VideoPublishStatus.UNPUBLISHED, response.getPublishStatus());
         assertTrue(response.isCanManage());
-        verify(tencentVodGateway).upload(any(), any(), any(), any(), any());
+        verify(tencentStorageGateway).upload(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void publishShouldMarkReadyVideoAsPublished() {
+        AppUser actor = teacher();
+        VideoAsset asset = video();
+        VideoStorageConfig config = defaultConfig();
+
+        authenticate(actor);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(videoAssetRepository.save(any(VideoAsset.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(appUserRepository.findAllById(any())).thenReturn(List.of(actor));
+        when(videoStorageConfigRepository.findAllById(any())).thenReturn(List.of(config));
+
+        VideoResponse response = videoAssetService.publish(asset.getId());
+
+        assertEquals(VideoPublishStatus.PUBLISHED, response.getPublishStatus());
+        assertTrue(asset.getPublishedAt() != null);
+    }
+
+    @Test
+    void publishShouldRejectVideoWithoutPlayableUrl() {
+        AppUser actor = teacher();
+        VideoAsset asset = video();
+        asset.setMediaUrl(null);
+
+        authenticate(actor);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+
+        assertThrows(BadRequestException.class, () -> videoAssetService.publish(asset.getId()));
+    }
+
+    @Test
+    void syncShouldUseVideoStorageConfigProvider() {
+        AppUser actor = teacher();
+        VideoAsset asset = video();
+        VideoStorageConfig config = defaultConfig();
+        config.setProviderType(VideoStorageProviderType.VOLCENGINE_VOD);
+        resolvedStorageConfig = config;
+
+        authenticate(actor);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(volcengineStorageGateway.describeMedia(config, "file-123")).thenReturn(
+                new VideoMediaInfo(
+                        "file-123",
+                        "https://volc.example.com/video.mp4",
+                        "https://volc.example.com/cover.jpg",
+                        90L,
+                        true,
+                        true
+                )
+        );
+        when(videoAssetRepository.save(any(VideoAsset.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(appUserRepository.findAllById(any())).thenReturn(List.of(actor));
+        when(videoStorageConfigRepository.findAllById(any())).thenReturn(List.of(config));
+
+        VideoResponse response = videoAssetService.sync(asset.getId());
+
+        assertEquals("https://volc.example.com/video.mp4", response.getMediaUrl());
+        verify(volcengineStorageGateway).describeMedia(config, "file-123");
+    }
+
+    @Test
+    void deleteShouldUseVideoStorageConfigProvider() {
+        AppUser actor = teacher();
+        VideoAsset asset = video();
+        VideoStorageConfig config = defaultConfig();
+        config.setProviderType(VideoStorageProviderType.VOLCENGINE_VOD);
+        resolvedStorageConfig = config;
+
+        authenticate(actor);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        videoAssetService.delete(asset.getId());
+
+        verify(volcengineStorageGateway).deleteMedia(config, "file-123");
+        verify(videoAssetRepository).delete(asset);
     }
 
     @Test
@@ -177,11 +287,84 @@ class VideoAssetServiceTest {
         when(appUserRepository.findAllById(any())).thenReturn(List.of(actor));
         when(videoStorageConfigRepository.findAllById(any())).thenReturn(List.of(config));
 
-        Page<VideoResponse> page = videoAssetService.listVisibleVideosPage(1, 10, null, null, null);
+        Page<VideoResponse> page = videoAssetService.listVisibleVideosPage(1, 10, null, null, null, null);
 
         assertEquals(1, page.getTotalElements());
         assertEquals("老师甲", page.getContent().get(0).getCreatedByDisplayName());
         assertEquals("腾讯云广州", page.getContent().get(0).getStorageConfigName());
+    }
+
+    @Test
+    void listVisibleVideosPageShouldAcceptPublishStatusFilter() {
+        AppUser actor = teacher();
+        VideoAsset asset = video();
+        asset.setPublishStatus(VideoPublishStatus.PUBLISHED);
+        VideoStorageConfig config = defaultConfig();
+
+        authenticate(actor);
+        when(videoAssetRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(asset)));
+        when(appUserRepository.findAllById(any())).thenReturn(List.of(actor));
+        when(videoStorageConfigRepository.findAllById(any())).thenReturn(List.of(config));
+
+        Page<VideoResponse> page = videoAssetService.listVisibleVideosPage(
+                1,
+                10,
+                null,
+                null,
+                VideoPublishStatus.PUBLISHED,
+                null
+        );
+
+        assertEquals(VideoPublishStatus.PUBLISHED, page.getContent().get(0).getPublishStatus());
+    }
+
+    @Test
+    void listStudentVideosPageShouldReturnPublishedSystemVideos() {
+        AppUser student = student();
+        AppUser teacher = teacher();
+        VideoAsset asset = video();
+        asset.setScopeType(ResourceScopeType.SYSTEM);
+        asset.setPublishStatus(VideoPublishStatus.PUBLISHED);
+
+        authenticate(student);
+        when(videoAssetRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(asset)));
+        when(appUserRepository.findAllById(any())).thenReturn(List.of(teacher));
+
+        Page<StudentVideoResponse> page = videoAssetService.listStudentVideosPage(1, 10, null);
+
+        assertEquals(1, page.getTotalElements());
+        assertEquals("教学视频", page.getContent().get(0).getTitle());
+        assertEquals("老师甲", page.getContent().get(0).getCreatedByDisplayName());
+    }
+
+    @Test
+    void getStudentPlaybackShouldReturnPlayUrlForPublishedSystemVideo() {
+        AppUser student = student();
+        VideoAsset asset = video();
+        asset.setScopeType(ResourceScopeType.SYSTEM);
+        asset.setPublishStatus(VideoPublishStatus.PUBLISHED);
+
+        authenticate(student);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+
+        VideoAccessResponse response = videoAssetService.getStudentPlayback(asset.getId());
+
+        assertEquals(VideoAccessMode.PLAY, response.getMode());
+        assertEquals("https://vod.example.com/video.mp4", response.getUrl());
+    }
+
+    @Test
+    void getStudentPlaybackShouldRejectUnpublishedVideo() {
+        AppUser student = student();
+        VideoAsset asset = video();
+        asset.setScopeType(ResourceScopeType.SYSTEM);
+
+        authenticate(student);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+
+        assertThrows(ResourceNotFoundException.class, () -> videoAssetService.getStudentPlayback(asset.getId()));
     }
 
     private AppUser teacher() {
@@ -195,10 +378,22 @@ class VideoAssetServiceTest {
         return actor;
     }
 
+    private AppUser student() {
+        AppUser actor = new AppUser();
+        actor.setId(9L);
+        actor.setUsername("student");
+        actor.setPasswordHash("hashed");
+        actor.setRole(UserRole.STUDENT);
+        actor.setDisplayName("学生甲");
+        actor.setStatus(UserStatus.ACTIVE);
+        return actor;
+    }
+
     private VideoStorageConfig defaultConfig() {
         VideoStorageConfig config = new VideoStorageConfig();
         config.setId(3L);
         config.setConfigName("腾讯云广州");
+        config.setProviderType(VideoStorageProviderType.TENCENT_VOD);
         return config;
     }
 

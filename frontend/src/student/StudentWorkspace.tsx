@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, House, Notebook, UserCircle } from '@phosphor-icons/react';
+import { BookOpen, House, Notebook, UserCircle, VideoCamera } from '@phosphor-icons/react';
 import { studentDashboardApi } from '../api';
 import type { Dictionary, StudentDashboard, User } from '../types';
 import { StudentDashboardHome } from './StudentDashboardHome';
 import { StudentLibrary } from './StudentLibrary';
 import { StudentProfile } from './StudentProfile';
 import { StudentStudySession } from './StudentStudySession';
+import { StudentVideos } from './StudentVideos';
 import './student-workspace.css';
 
-type StudentTab = 'home' | 'study' | 'library' | 'profile';
+type StudentTab = 'home' | 'study' | 'library' | 'videos' | 'profile';
 
 interface StudentWorkspaceProps {
   user: User;
@@ -20,6 +21,7 @@ const navItems = [
   { id: 'home' as const, label: '首页', icon: House },
   { id: 'study' as const, label: '学习', icon: BookOpen },
   { id: 'library' as const, label: '词库', icon: Notebook },
+  { id: 'videos' as const, label: '视频', icon: VideoCamera },
   { id: 'profile' as const, label: '我的', icon: UserCircle },
 ];
 
@@ -87,6 +89,7 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
             />
           )}
           {tab === 'library' && <StudentLibrary dictionaries={dictionaries} />}
+          {tab === 'videos' && <StudentVideos />}
           {tab === 'profile' && <StudentProfile user={user} onSignOut={onSignOut} />}
         </div>
 

@@ -30,6 +30,7 @@ import type {
     UpdateVideoStorageConfigPayload,
     UserResponse,
     VideoAccessResponse,
+    VideoPublishStatus,
     VideoResponse,
     VideoStatus,
     VideoStorageConfigResponse,
@@ -273,13 +274,22 @@ export const api = {
     backfillSyllables: (limit = 200) =>
         request<SyllableBackfillResponse>(`/api/admin/syllables/backfill?limit=${limit}`, { method: "POST" }),
 
-    listVideosPage: (params: { page?: number; size?: number; keyword?: string; status?: VideoStatus; scopeType?: string }) =>
+    listVideosPage: (params: {
+        page?: number;
+        size?: number;
+        keyword?: string;
+        status?: VideoStatus;
+        publishStatus?: VideoPublishStatus;
+        scopeType?: string;
+    }) =>
         request<PaginatedResponse<VideoResponse>>(`/api/videos/page${buildQueryString(params)}`),
     getVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}`),
     uploadVideo: (formData: FormData) =>
         request<VideoResponse>("/api/videos/upload", { method: "POST", body: formData }),
     getVideoAccess: (id: number) => request<VideoAccessResponse>(`/api/videos/${id}/access`),
     syncVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}/sync`, { method: "POST" }),
+    publishVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}/publish`, { method: "POST" }),
+    unpublishVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}/unpublish`, { method: "POST" }),
     deleteVideo: (id: number) => request<void>(`/api/videos/${id}`, { method: "DELETE" }),
 
     listVideoStorageConfigs: (params?: { status?: VideoStorageConfigStatus }) =>

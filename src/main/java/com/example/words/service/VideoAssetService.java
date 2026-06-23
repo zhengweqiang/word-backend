@@ -2,21 +2,29 @@ package com.example.words.service;
 
 import com.example.words.dto.VideoAccessResponse;
 import com.example.words.dto.VideoResponse;
+import com.example.words.dto.StudentVideoResponse;
 import com.example.words.exception.BadRequestException;
+import com.example.words.exception.ResourceNotFoundException;
 import com.example.words.exception.ResourceNotFoundException;
 import com.example.words.model.AppUser;
 import com.example.words.model.ResourceScopeType;
 import com.example.words.model.UserRole;
 import com.example.words.model.VideoAccessMode;
 import com.example.words.model.VideoAsset;
+import com.example.words.model.VideoPublishStatus;
 import com.example.words.model.VideoStatus;
 import com.example.words.model.VideoStorageConfig;
 import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.VideoAssetRepository;
 import com.example.words.repository.VideoStorageConfigRepository;
+import com.example.words.service.video.VideoMediaInfo;
+import com.example.words.service.video.VideoStorageGateway;
+import com.example.words.service.video.VideoStorageGatewayRegistry;
+import com.example.words.service.video.VideoUploadResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,8 +54,9 @@ public class VideoAssetService {
     private final CurrentUserService currentUserService;
     private final AccessControlService accessControlService;
     private final VideoStorageConfigService videoStorageConfigService;
-    private final TencentVodGateway tencentVodGateway;
+    private final VideoStorageGatewayRegistry gatewayRegistry;
     private final AppUserRepository appUserRepository;
+    private final TeacherStudentService teacherStudentService;
 
     public VideoAssetService(
             VideoAssetRepository videoAssetRepository,
@@ -55,15 +64,17 @@ public class VideoAssetService {
             CurrentUserService currentUserService,
             AccessControlService accessControlService,
             VideoStorageConfigService videoStorageConfigService,
-            TencentVodGateway tencentVodGateway,
-            AppUserRepository appUserRepository) {
+            VideoStorageGatewayRegistry gatewayRegistry,
+            AppUserRepository appUserRepository,
+            TeacherStudentService teacherStudentService) {
         this.videoAssetRepository = videoAssetRepository;
         this.videoStorageConfigRepository = videoStorageConfigRepository;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.videoStorageConfigService = videoStorageConfigService;
-        this.tencentVodGateway = tencentVodGateway;
+        this.gatewayRegistry = gatewayRegistry;
         this.appUserRepository = appUserRepository;
+        this.teacherStudentService = teacherStudentService;
     }
 
     @Transactional(readOnly = true)
@@ -72,12 +83,14 @@ public class VideoAssetService {
             int size,
             String keyword,
             VideoStatus status,
+            VideoPublishStatus publishStatus,
             ResourceScopeType scopeType) {
         AppUser actor = currentUserService.getCurrentUser();
         Pageable pageable = buildPageable(page, size);
         Specification<VideoAsset> specification = Specification.<VideoAsset>where(visibleTo(actor))
                 .and(keywordLike(keyword))
                 .and(statusEquals(status))
+                .and(publishStatusEquals(publishStatus))
                 .and(scopeEquals(scopeType));
 
         Page<VideoAsset> pageResult = videoAssetRepository.findAll(specification, pageable);
@@ -91,6 +104,22 @@ public class VideoAssetService {
         VideoAsset videoAsset = getVideoEntity(id);
         accessControlService.ensureCanViewVideo(actor, videoAsset);
         return enrichResponses(List.of(videoAsset), actor).get(0);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<StudentVideoResponse> listStudentVideosPage(int page, int size, String keyword) {
+        AppUser actor = currentUserService.getCurrentUser();
+        if (actor.getRole() != UserRole.STUDENT) {
+            throw new AccessDeniedException("Only students can access published videos");
+        }
+        Pageable pageable = buildPageable(page, size);
+        Set<Long> responsibleTeacherIds = teacherStudentService.getResponsibleTeacherIdsForStudent(actor.getId());
+        Specification<VideoAsset> specification = Specification.<VideoAsset>where(studentVisibleTo(responsibleTeacherIds))
+                .and(keywordLike(keyword));
+
+        Page<VideoAsset> pageResult = videoAssetRepository.findAll(specification, pageable);
+        List<StudentVideoResponse> content = enrichStudentResponses(pageResult.getContent());
+        return new PageImpl<>(content, pageable, pageResult.getTotalElements());
     }
 
     @Transactional
@@ -108,7 +137,8 @@ public class VideoAssetService {
             tempFile = Files.createTempFile("vod-upload-", "." + extensionOf(originalFileName));
             file.transferTo(tempFile);
 
-            TencentVodUploadResult uploadResult = tencentVodGateway.upload(
+            VideoStorageGateway gateway = gatewayRegistry.get(storageConfig.getProviderType());
+            VideoUploadResult uploadResult = gateway.upload(
                     storageConfig,
                     tempFile,
                     originalFileName,
@@ -116,9 +146,9 @@ public class VideoAssetService {
                     trimToNull(description)
             );
 
-            TencentVodMediaInfo mediaInfo = uploadResult.transcodeRequested()
-                    ? waitForPreferredPlayback(storageConfig, uploadResult.fileId())
-                    : tencentVodGateway.describeMedia(storageConfig, uploadResult.fileId());
+            VideoMediaInfo mediaInfo = uploadResult.transcodeRequested()
+                    ? waitForPreferredPlayback(gateway, storageConfig, uploadResult.mediaId())
+                    : gateway.describeMedia(storageConfig, uploadResult.mediaId());
 
             VideoAsset videoAsset = new VideoAsset();
             videoAsset.setTitle(resolvedTitle);
@@ -126,7 +156,7 @@ public class VideoAssetService {
             videoAsset.setOriginalFileName(originalFileName);
             videoAsset.setContentType(trimToNull(file.getContentType()));
             videoAsset.setFileSize(file.getSize());
-            videoAsset.setTencentFileId(uploadResult.fileId());
+            videoAsset.setTencentFileId(uploadResult.mediaId());
             videoAsset.setMediaUrl(resolvePlayableUrl(uploadResult, mediaInfo));
             videoAsset.setCoverUrl(firstNonBlank(uploadResult.coverUrl(), mediaInfo.coverUrl()));
             videoAsset.setDurationSeconds(mediaInfo.durationSeconds());
@@ -167,6 +197,24 @@ public class VideoAssetService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public VideoAccessResponse getStudentPlayback(Long id) {
+        AppUser actor = currentUserService.getCurrentUser();
+        VideoAsset videoAsset = getVideoEntity(id);
+        if (!isVisibleToStudent(actor, videoAsset)) {
+            throw new ResourceNotFoundException("Video not found: " + id);
+        }
+        if (trimToNull(videoAsset.getMediaUrl()) == null) {
+            throw new BadRequestException("Video is not ready for playback");
+        }
+        return new VideoAccessResponse(
+                videoAsset.getId(),
+                VideoAccessMode.PLAY,
+                videoAsset.getMediaUrl(),
+                videoAsset.getCoverUrl()
+        );
+    }
+
     @Transactional
     public VideoResponse sync(Long id) {
         AppUser actor = currentUserService.getCurrentUser();
@@ -174,7 +222,8 @@ public class VideoAssetService {
         accessControlService.ensureCanManageVideo(actor, videoAsset);
 
         VideoStorageConfig config = videoStorageConfigService.getConfigEntity(videoAsset.getStorageConfigId());
-        TencentVodMediaInfo mediaInfo = tencentVodGateway.describeMedia(config, videoAsset.getTencentFileId());
+        VideoStorageGateway gateway = gatewayRegistry.get(config.getProviderType());
+        VideoMediaInfo mediaInfo = gateway.describeMedia(config, videoAsset.getTencentFileId());
         String resolvedMediaUrl = resolvePlayableUrl(config, mediaInfo, videoAsset.getMediaUrl());
         videoAsset.setMediaUrl(resolvedMediaUrl);
         videoAsset.setCoverUrl(firstNonBlank(mediaInfo.coverUrl(), videoAsset.getCoverUrl()));
@@ -188,13 +237,41 @@ public class VideoAssetService {
     }
 
     @Transactional
+    public VideoResponse publish(Long id) {
+        AppUser actor = currentUserService.getCurrentUser();
+        VideoAsset videoAsset = getVideoEntity(id);
+        accessControlService.ensureCanManageVideo(actor, videoAsset);
+        if (videoAsset.getStatus() != VideoStatus.READY || trimToNull(videoAsset.getMediaUrl()) == null) {
+            throw new BadRequestException("Video must be ready before publishing");
+        }
+        if (videoAsset.getPublishStatus() != VideoPublishStatus.PUBLISHED) {
+            videoAsset.setPublishStatus(VideoPublishStatus.PUBLISHED);
+            videoAsset.setPublishedAt(LocalDateTime.now());
+        }
+        return enrichResponses(List.of(videoAssetRepository.save(videoAsset)), actor).get(0);
+    }
+
+    @Transactional
+    public VideoResponse unpublish(Long id) {
+        AppUser actor = currentUserService.getCurrentUser();
+        VideoAsset videoAsset = getVideoEntity(id);
+        accessControlService.ensureCanManageVideo(actor, videoAsset);
+        if (videoAsset.getPublishStatus() != VideoPublishStatus.UNPUBLISHED) {
+            videoAsset.setPublishStatus(VideoPublishStatus.UNPUBLISHED);
+            videoAsset.setUnpublishedAt(LocalDateTime.now());
+        }
+        return enrichResponses(List.of(videoAssetRepository.save(videoAsset)), actor).get(0);
+    }
+
+    @Transactional
     public void delete(Long id) {
         AppUser actor = currentUserService.getCurrentUser();
         VideoAsset videoAsset = getVideoEntity(id);
         accessControlService.ensureCanManageVideo(actor, videoAsset);
 
         VideoStorageConfig config = videoStorageConfigService.getConfigEntity(videoAsset.getStorageConfigId());
-        tencentVodGateway.deleteMedia(config, videoAsset.getTencentFileId());
+        VideoStorageGateway gateway = gatewayRegistry.get(config.getProviderType());
+        gateway.deleteMedia(config, videoAsset.getTencentFileId());
         videoAssetRepository.delete(videoAsset);
     }
 
@@ -222,6 +299,27 @@ public class VideoAssetService {
                 .toList();
     }
 
+    private List<StudentVideoResponse> enrichStudentResponses(List<VideoAsset> videos) {
+        Set<Long> userIds = videos.stream()
+                .map(VideoAsset::getCreatedBy)
+                .collect(Collectors.toSet());
+        Map<Long, String> userNames = appUserRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(AppUser::getId, AppUser::getDisplayName));
+
+        return videos.stream()
+                .map(video -> new StudentVideoResponse(
+                        video.getId(),
+                        video.getTitle(),
+                        video.getDescription(),
+                        video.getCoverUrl(),
+                        video.getDurationSeconds(),
+                        userNames.getOrDefault(video.getCreatedBy(), "用户#" + video.getCreatedBy()),
+                        video.getPublishedAt(),
+                        video.getUpdatedAt()
+                ))
+                .toList();
+    }
+
     private VideoResponse toResponse(
             VideoAsset video,
             AppUser actor,
@@ -241,6 +339,7 @@ public class VideoAssetService {
                 video.getCoverUrl(),
                 video.getDurationSeconds(),
                 video.getStatus(),
+                video.getPublishStatus(),
                 video.getErrorMessage(),
                 video.getCreatedBy(),
                 userNames.getOrDefault(video.getCreatedBy(), "用户#" + video.getCreatedBy()),
@@ -250,6 +349,8 @@ public class VideoAssetService {
                 configNames.get(video.getStorageConfigId()),
                 canManage,
                 canPreview,
+                video.getPublishedAt(),
+                video.getUnpublishedAt(),
                 video.getCreatedAt(),
                 video.getUpdatedAt()
         );
@@ -284,6 +385,35 @@ public class VideoAssetService {
         return (root, query, criteriaBuilder) -> criteriaBuilder.disjunction();
     }
 
+    private Specification<VideoAsset> studentVisibleTo(Set<Long> responsibleTeacherIds) {
+        return (root, query, criteriaBuilder) -> {
+            var ready = criteriaBuilder.equal(root.get("status"), VideoStatus.READY);
+            var published = criteriaBuilder.equal(root.get("publishStatus"), VideoPublishStatus.PUBLISHED);
+            var systemScope = criteriaBuilder.equal(root.get("scopeType"), ResourceScopeType.SYSTEM);
+            if (responsibleTeacherIds == null || responsibleTeacherIds.isEmpty()) {
+                return criteriaBuilder.and(ready, published, systemScope);
+            }
+            return criteriaBuilder.and(
+                    ready,
+                    published,
+                    criteriaBuilder.or(systemScope, root.get("ownerUserId").in(responsibleTeacherIds))
+            );
+        };
+    }
+
+    private boolean isVisibleToStudent(AppUser actor, VideoAsset videoAsset) {
+        if (actor.getRole() != UserRole.STUDENT
+                || videoAsset.getStatus() != VideoStatus.READY
+                || videoAsset.getPublishStatus() != VideoPublishStatus.PUBLISHED) {
+            return false;
+        }
+        if (videoAsset.getScopeType() == ResourceScopeType.SYSTEM) {
+            return true;
+        }
+        return videoAsset.getScopeType() == ResourceScopeType.TEACHER
+                && teacherStudentService.isTeacherResponsibleForStudent(videoAsset.getOwnerUserId(), actor.getId());
+    }
+
     private Specification<VideoAsset> keywordLike(String keyword) {
         String normalized = trimToNull(keyword);
         if (normalized == null) {
@@ -301,6 +431,13 @@ public class VideoAssetService {
             return null;
         }
         return (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("status"), status);
+    }
+
+    private Specification<VideoAsset> publishStatusEquals(VideoPublishStatus publishStatus) {
+        if (publishStatus == null) {
+            return null;
+        }
+        return (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("publishStatus"), publishStatus);
     }
 
     private Specification<VideoAsset> scopeEquals(ResourceScopeType scopeType) {
@@ -340,21 +477,21 @@ public class VideoAssetService {
         return index > 0 ? originalFileName.substring(0, index) : originalFileName;
     }
 
-    private VideoStatus resolveStatus(VideoStorageConfig config, String mediaUrl, TencentVodMediaInfo mediaInfo) {
+    private VideoStatus resolveStatus(VideoStorageConfig config, String mediaUrl, VideoMediaInfo mediaInfo) {
         if (expectsManaged360pPlayback(config)) {
             return mediaInfo.preferredPlaybackReady() ? VideoStatus.READY : VideoStatus.PROCESSING;
         }
         return mediaInfo.ready() || trimToNull(mediaUrl) != null ? VideoStatus.READY : VideoStatus.PROCESSING;
     }
 
-    private String resolvePlayableUrl(TencentVodUploadResult uploadResult, TencentVodMediaInfo mediaInfo) {
+    private String resolvePlayableUrl(VideoUploadResult uploadResult, VideoMediaInfo mediaInfo) {
         if (uploadResult.transcodeRequested()) {
             return mediaInfo.preferredPlaybackReady() ? trimToNull(mediaInfo.mediaUrl()) : null;
         }
         return firstNonBlank(uploadResult.mediaUrl(), mediaInfo.mediaUrl());
     }
 
-    private String resolvePlayableUrl(VideoStorageConfig config, TencentVodMediaInfo mediaInfo, String existingMediaUrl) {
+    private String resolvePlayableUrl(VideoStorageConfig config, VideoMediaInfo mediaInfo, String existingMediaUrl) {
         if (expectsManaged360pPlayback(config)) {
             return mediaInfo.preferredPlaybackReady() ? trimToNull(mediaInfo.mediaUrl()) : null;
         }
@@ -365,10 +502,13 @@ public class VideoAssetService {
         return trimToNull(config.getProcedureName()) == null;
     }
 
-    private TencentVodMediaInfo waitForPreferredPlayback(VideoStorageConfig storageConfig, String fileId) {
-        TencentVodMediaInfo latest = null;
+    private VideoMediaInfo waitForPreferredPlayback(
+            VideoStorageGateway gateway,
+            VideoStorageConfig storageConfig,
+            String fileId) {
+        VideoMediaInfo latest = null;
         for (int index = 0; index < TRANSCODE_SYNC_MAX_ATTEMPTS; index++) {
-            latest = tencentVodGateway.describeMedia(storageConfig, fileId);
+            latest = gateway.describeMedia(storageConfig, fileId);
             if (latest.preferredPlaybackReady()) {
                 return latest;
             }
@@ -377,7 +517,7 @@ public class VideoAssetService {
             }
         }
         return latest == null
-                ? new TencentVodMediaInfo(fileId, null, null, null, false, false)
+                ? new VideoMediaInfo(fileId, null, null, null, false, false)
                 : latest;
     }
 

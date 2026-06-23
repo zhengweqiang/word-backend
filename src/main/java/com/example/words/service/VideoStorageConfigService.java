@@ -11,8 +11,11 @@ import com.example.words.exception.ResourceNotFoundException;
 import com.example.words.model.AppUser;
 import com.example.words.model.VideoStorageConfig;
 import com.example.words.model.VideoStorageConfigStatus;
+import com.example.words.model.VideoStorageProviderType;
 import com.example.words.repository.VideoAssetRepository;
 import com.example.words.repository.VideoStorageConfigRepository;
+import com.example.words.service.video.VideoStorageGateway;
+import com.example.words.service.video.VideoStorageGatewayRegistry;
 import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -26,7 +29,7 @@ public class VideoStorageConfigService {
     private final VideoStorageConfigCryptoService cryptoService;
     private final CurrentUserService currentUserService;
     private final AccessControlService accessControlService;
-    private final TencentVodGateway tencentVodGateway;
+    private final VideoStorageGatewayRegistry gatewayRegistry;
 
     public VideoStorageConfigService(
             VideoStorageConfigRepository videoStorageConfigRepository,
@@ -34,13 +37,13 @@ public class VideoStorageConfigService {
             VideoStorageConfigCryptoService cryptoService,
             CurrentUserService currentUserService,
             AccessControlService accessControlService,
-            TencentVodGateway tencentVodGateway) {
+            VideoStorageGatewayRegistry gatewayRegistry) {
         this.videoStorageConfigRepository = videoStorageConfigRepository;
         this.videoAssetRepository = videoAssetRepository;
         this.cryptoService = cryptoService;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
-        this.tencentVodGateway = tencentVodGateway;
+        this.gatewayRegistry = gatewayRegistry;
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +70,8 @@ public class VideoStorageConfigService {
         String secretId = normalizeRequiredSecret(request.getSecretId(), "secretId");
         String secretKey = normalizeRequiredSecret(request.getSecretKey(), "secretKey");
         String region = normalizeRequiredText(request.getRegion(), "region", 64);
+        VideoStorageProviderType providerType = request.getProviderType();
+        String spaceName = normalizeSpaceName(providerType, request.getSpaceName());
         String procedureName = trimToNull(request.getProcedureName());
         String remark = trimToNull(request.getRemark());
 
@@ -81,7 +86,9 @@ public class VideoStorageConfigService {
         config.setSecretKeyEncrypted(cryptoService.encrypt(secretKey));
         config.setSecretKeyMasked(cryptoService.mask(secretKey));
         config.setRegion(region);
+        config.setProviderType(providerType);
         config.setSubAppId(request.getSubAppId());
+        config.setSpaceName(spaceName);
         config.setProcedureName(procedureName);
         config.setStatus(request.getStatus());
         config.setIsDefault(Boolean.TRUE.equals(request.getIsDefault()));
@@ -107,14 +114,22 @@ public class VideoStorageConfigService {
         String region = normalizeRequiredText(request.getRegion(), "region", 64);
         String secretId = normalizeOptionalSecret(request.getSecretId());
         String secretKey = normalizeOptionalSecret(request.getSecretKey());
+        VideoStorageProviderType providerType = request.getProviderType();
+        String spaceName = normalizeSpaceName(providerType, request.getSpaceName());
 
         if (videoStorageConfigRepository.existsByConfigNameAndIdNot(configName, id)) {
             throw new ConflictException("Video storage config already exists");
         }
+        if (videoAssetRepository.countByStorageConfigId(id) > 0
+                && config.getProviderType() != providerType) {
+            throw new ConflictException("Video storage provider cannot be changed after videos are uploaded");
+        }
 
         config.setConfigName(configName);
         config.setRegion(region);
+        config.setProviderType(providerType);
         config.setSubAppId(request.getSubAppId());
+        config.setSpaceName(spaceName);
         config.setProcedureName(trimToNull(request.getProcedureName()));
         config.setStatus(request.getStatus());
         config.setRemark(trimToNull(request.getRemark()));
@@ -175,7 +190,8 @@ public class VideoStorageConfigService {
     public VideoStorageConfigTestResponse test(Long id) {
         ensureAdmin();
         VideoStorageConfig config = getConfigEntity(id);
-        tencentVodGateway.validate(config);
+        VideoStorageGateway gateway = gatewayRegistry.get(config.getProviderType());
+        gateway.validate(config);
         return new VideoStorageConfigTestResponse(
                 config.getId(),
                 config.getConfigName(),
@@ -238,6 +254,14 @@ public class VideoStorageConfigService {
 
     private String normalizeOptionalSecret(String value) {
         return trimToNull(value);
+    }
+
+    private String normalizeSpaceName(VideoStorageProviderType providerType, String value) {
+        String normalized = trimToNull(value);
+        if (providerType == VideoStorageProviderType.VOLCENGINE_VOD && normalized == null) {
+            throw new BadRequestException("spaceName is required for Volcengine VOD");
+        }
+        return normalized;
     }
 
     private String trimToNull(String value) {

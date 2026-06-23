@@ -1,6 +1,8 @@
 package com.example.words.dto;
 
 import com.example.words.model.VideoStorageConfigStatus;
+import com.example.words.model.VideoStorageProviderType;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -34,6 +36,12 @@ public class UpdateVideoStorageConfigRequest {
     @Size(max = 128, message = "procedureName must not exceed 128 characters")
     private String procedureName;
 
+    @NotNull(message = "providerType is required")
+    private VideoStorageProviderType providerType;
+
+    @Size(max = 128, message = "spaceName must not exceed 128 characters")
+    private String spaceName;
+
     @NotNull(message = "status is required")
     private VideoStorageConfigStatus status;
 
@@ -42,4 +50,12 @@ public class UpdateVideoStorageConfigRequest {
 
     @Size(max = 500, message = "remark must not exceed 500 characters")
     private String remark;
+
+    @AssertTrue(message = "spaceName is required for Volcengine VOD")
+    public boolean isVolcengineSpaceNameValid() {
+        if (providerType != VideoStorageProviderType.VOLCENGINE_VOD) {
+            return true;
+        }
+        return spaceName != null && !spaceName.trim().isEmpty();
+    }
 }

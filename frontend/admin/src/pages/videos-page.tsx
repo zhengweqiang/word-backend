@@ -13,7 +13,13 @@ import { PageHeader } from "@/components/shared/page-header";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api";
 import { compactFileSize, formatDateTime } from "@/lib/format";
-import type { PaginatedResponse, VideoAccessResponse, VideoResponse, VideoStatus } from "@/types/api";
+import type {
+    PaginatedResponse,
+    VideoAccessResponse,
+    VideoPublishStatus,
+    VideoResponse,
+    VideoStatus,
+} from "@/types/api";
 
 const PAGE_SIZE = 12;
 
@@ -34,6 +40,14 @@ const statusVariant = (status: VideoStatus): "warning" | "success" | "destructiv
     }
 };
 
+const publishStatusLabel: Record<VideoPublishStatus, string> = {
+    UNPUBLISHED: "未发布",
+    PUBLISHED: "已发布",
+};
+
+const publishStatusVariant = (publishStatus: VideoPublishStatus): "outline" | "success" =>
+    publishStatus === "PUBLISHED" ? "success" : "outline";
+
 const createDefaultForm = () => ({
     title: "",
     description: "",
@@ -46,6 +60,7 @@ export function VideosPage() {
     const [page, setPage] = createSignal(1);
     const [keyword, setKeyword] = createSignal("");
     const [status, setStatus] = createSignal<VideoStatus | "">("");
+    const [publishStatus, setPublishStatus] = createSignal<VideoPublishStatus | "">("");
     const [form, setForm] = createStore(createDefaultForm());
     const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
     const [saving, setSaving] = createSignal(false);
@@ -67,6 +82,7 @@ export function VideosPage() {
             size: PAGE_SIZE,
             keyword: keyword().trim() || undefined,
             status: status() || undefined,
+            publishStatus: publishStatus() || undefined,
         };
     });
 
@@ -165,7 +181,7 @@ export function VideosPage() {
 
         try {
             await api.syncVideo(video.id);
-            setFeedback(`已同步视频「${video.title}」的腾讯云状态。`);
+            setFeedback(`已同步视频「${video.title}」的云端状态。`);
             await refetch();
         } catch (syncError) {
             setError(syncError instanceof Error ? syncError.message : "同步视频状态失败");
@@ -174,8 +190,40 @@ export function VideosPage() {
         }
     };
 
+    const handlePublish = async (video: VideoResponse) => {
+        setActionKey(`publish-${video.id}`);
+        setFeedback("");
+        setError("");
+
+        try {
+            await api.publishVideo(video.id);
+            setFeedback(`视频「${video.title}」已发布给学生。`);
+            await refetch();
+        } catch (publishError) {
+            setError(publishError instanceof Error ? publishError.message : "发布视频失败");
+        } finally {
+            setActionKey(null);
+        }
+    };
+
+    const handleUnpublish = async (video: VideoResponse) => {
+        setActionKey(`unpublish-${video.id}`);
+        setFeedback("");
+        setError("");
+
+        try {
+            await api.unpublishVideo(video.id);
+            setFeedback(`视频「${video.title}」已下架。`);
+            await refetch();
+        } catch (unpublishError) {
+            setError(unpublishError instanceof Error ? unpublishError.message : "下架视频失败");
+        } finally {
+            setActionKey(null);
+        }
+    };
+
     const handleDelete = async (video: VideoResponse) => {
-        if (!window.confirm(`确定删除视频「${video.title}」吗？腾讯云上的媒体也会一并删除。`)) {
+        if (!window.confirm(`确定删除视频「${video.title}」吗？云端媒体也会一并删除。`)) {
             return;
         }
 
@@ -216,7 +264,7 @@ export function VideosPage() {
             <PageHeader
                 eyebrow="Media"
                 title="视频资源"
-                description="管理员和老师可以在这里上传教学视频、同步腾讯云状态，并在后台直接预览可播放资源。"
+                description="管理员和老师可以在这里上传教学视频、同步云端状态，并在后台直接预览可播放资源。"
                 actions={
                     <div class="flex flex-wrap items-center gap-3">
                         <Button variant="outline" onClick={() => void refetch()}>
@@ -238,7 +286,7 @@ export function VideosPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>上传视频</CardTitle>
-                        <CardDescription>上传文件后会自动写入腾讯云点播，并记录当前启用的默认配置。</CardDescription>
+                        <CardDescription>上传文件后会自动写入默认视频点播配置，并记录当前启用的默认配置。</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <form class="space-y-4" onSubmit={(event) => void handleUpload(event)}>
@@ -297,7 +345,7 @@ export function VideosPage() {
                         <CardDescription>支持按标题搜索和按状态筛选，分页展示当前可见的视频资源。</CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-4">
-                        <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_200px]">
+                        <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_180px]">
                             <Input
                                 value={keyword()}
                                 onInput={(event) => {
@@ -319,6 +367,18 @@ export function VideosPage() {
                                 <option value="READY">可预览</option>
                                 <option value="FAILED">失败</option>
                             </select>
+                            <select
+                                class="h-11 w-full rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                value={publishStatus()}
+                                onChange={(event) => {
+                                    setPublishStatus(event.currentTarget.value as VideoPublishStatus | "");
+                                    setPage(1);
+                                }}
+                            >
+                                <option value="">全部发布状态</option>
+                                <option value="UNPUBLISHED">未发布</option>
+                                <option value="PUBLISHED">已发布</option>
+                            </select>
                         </div>
 
                         <Show
@@ -335,9 +395,14 @@ export function VideosPage() {
                                                         <p class="font-medium text-foreground">{video.title}</p>
                                                         <p class="text-xs text-muted-foreground">{video.originalFileName}</p>
                                                     </div>
-                                                    <Badge variant={statusVariant(video.status)}>
-                                                        {statusLabel[video.status]}
-                                                    </Badge>
+                                                    <div class="flex flex-wrap justify-end gap-2">
+                                                        <Badge variant={statusVariant(video.status)}>
+                                                            {statusLabel[video.status]}
+                                                        </Badge>
+                                                        <Badge variant={publishStatusVariant(video.publishStatus)}>
+                                                            {publishStatusLabel[video.publishStatus]}
+                                                        </Badge>
+                                                    </div>
                                                 </div>
 
                                                 <Show when={video.description}>
@@ -351,6 +416,9 @@ export function VideosPage() {
                                                     <p>配置：{video.storageConfigName || `#${video.storageConfigId}`}</p>
                                                     <p>上传时间：{formatDateTime(video.createdAt)}</p>
                                                     <p>最近更新：{formatDateTime(video.updatedAt)}</p>
+                                                    <Show when={video.publishedAt}>
+                                                        <p>发布时间：{formatDateTime(video.publishedAt)}</p>
+                                                    </Show>
                                                 </div>
 
                                                 <div class="flex flex-wrap gap-2">
@@ -370,6 +438,28 @@ export function VideosPage() {
                                                     >
                                                         {actionKey() === `sync-${video.id}` ? "同步中..." : "同步状态"}
                                                     </Button>
+                                                    <Show
+                                                        when={video.publishStatus === "PUBLISHED"}
+                                                        fallback={
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                disabled={!video.canManage || !video.canPreview || Boolean(actionKey())}
+                                                                onClick={() => void handlePublish(video)}
+                                                            >
+                                                                {actionKey() === `publish-${video.id}` ? "发布中..." : "发布"}
+                                                            </Button>
+                                                        }
+                                                    >
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={!video.canManage || Boolean(actionKey())}
+                                                            onClick={() => void handleUnpublish(video)}
+                                                        >
+                                                            {actionKey() === `unpublish-${video.id}` ? "下架中..." : "下架"}
+                                                        </Button>
+                                                    </Show>
                                                     <Button
                                                         variant="destructive"
                                                         size="sm"

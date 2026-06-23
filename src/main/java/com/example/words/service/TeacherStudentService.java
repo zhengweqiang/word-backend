@@ -100,6 +100,25 @@ public class TeacherStudentService {
                 && classroomMemberRepository.existsByClassroomIdInAndStudentId(classroomIds, studentId);
     }
 
+    @Transactional(readOnly = true)
+    public Set<Long> getResponsibleTeacherIdsForStudent(Long studentId) {
+        Set<Long> teacherIds = teacherStudentRelationRepository.findByStudentId(studentId).stream()
+                .map(TeacherStudentRelation::getTeacherId)
+                .collect(Collectors.toSet());
+
+        List<Long> classroomIds = classroomMemberRepository.findByStudentId(studentId).stream()
+                .map(ClassroomMember::getClassroomId)
+                .toList();
+
+        if (!classroomIds.isEmpty()) {
+            classroomRepository.findAllById(classroomIds).stream()
+                    .map(Classroom::getTeacherId)
+                    .forEach(teacherIds::add);
+        }
+
+        return teacherIds;
+    }
+
     private void validateTeacherAndStudent(AppUser teacher, AppUser student) {
         if (teacher.getRole() != UserRole.TEACHER) {
             throw new BadRequestException("User is not a teacher: " + teacher.getId());

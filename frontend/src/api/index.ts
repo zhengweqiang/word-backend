@@ -28,6 +28,7 @@ import type {
   RecordStudyPayload,
   GenerateReadingPayload,
   GenerateReadingResponse,
+  StudentVideo,
   StudentAttentionDailyStat,
   StudentDashboard,
   StudentDashboardRecordPayload,
@@ -40,6 +41,7 @@ import type {
   StudyTask,
   UpdateAiConfigPayload,
   User,
+  VideoAccessResponse,
 } from '../types';
 
 export interface WordListProcessResult {
@@ -468,6 +470,19 @@ export const studentWordMemoryApi = {
       body: JSON.stringify({ favorite }),
     },
   ),
+};
+
+export const studentVideoApi = {
+  list: (page = 1, size = 20, keyword?: string) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('size', String(size));
+    if (keyword?.trim()) {
+      params.set('keyword', keyword.trim());
+    }
+    return fetchJson<Page<StudentVideo>>(`${API_BASE}/students/me/videos/page?${params.toString()}`);
+  },
+  play: (id: number) => fetchJson<VideoAccessResponse>(`${API_BASE}/students/me/videos/${id}/play`),
 };
 
 export const studyPlanApi = {

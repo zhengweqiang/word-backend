@@ -3,6 +3,7 @@ package com.example.words.dto;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.example.words.model.VideoStorageProviderType;
 import com.example.words.model.VideoStorageConfigStatus;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
@@ -29,6 +30,8 @@ class VideoStorageConfigRequestValidationTest {
                 "ap-guangzhou",
                 null,
                 null,
+                VideoStorageProviderType.TENCENT_VOD,
+                null,
                 VideoStorageConfigStatus.DISABLED,
                 Boolean.FALSE,
                 "draft"
@@ -50,11 +53,35 @@ class VideoStorageConfigRequestValidationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null
         );
 
         Set<ConstraintViolation<CreateVideoStorageConfigRequest>> violations = validator.validate(request);
 
-        assertEquals(6, violations.size());
+        assertEquals(7, violations.size());
+    }
+
+    @Test
+    void createRequestShouldRejectVolcengineConfigWithoutSpaceName() {
+        CreateVideoStorageConfigRequest request = new CreateVideoStorageConfigRequest(
+                "火山云",
+                "ak",
+                "sk",
+                "cn-north-1",
+                123456L,
+                null,
+                VideoStorageProviderType.VOLCENGINE_VOD,
+                " ",
+                VideoStorageConfigStatus.ENABLED,
+                Boolean.TRUE,
+                null
+        );
+
+        Set<ConstraintViolation<CreateVideoStorageConfigRequest>> violations = validator.validate(request);
+
+        assertEquals(1, violations.size());
+        assertEquals("spaceName is required for Volcengine VOD", violations.iterator().next().getMessage());
     }
 }

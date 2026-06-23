@@ -2,6 +2,7 @@ package com.example.words.dto;
 
 import com.example.words.model.VideoStorageConfig;
 import com.example.words.model.VideoStorageConfigStatus;
+import com.example.words.model.VideoStorageProviderType;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -17,7 +18,9 @@ public class VideoStorageConfigResponse {
     private String secretIdMasked;
     private String secretKeyMasked;
     private String region;
+    private VideoStorageProviderType providerType;
     private Long subAppId;
+    private String spaceName;
     private String procedureName;
     private VideoStorageConfigStatus status;
     private Boolean isDefault;
@@ -32,7 +35,9 @@ public class VideoStorageConfigResponse {
                 config.getSecretIdMasked(),
                 config.getSecretKeyMasked(),
                 config.getRegion(),
+                config.getProviderType(),
                 config.getSubAppId(),
+                config.getSpaceName(),
                 config.getProcedureName(),
                 config.getStatus(),
                 config.getIsDefault(),

@@ -60,6 +60,16 @@ public class VideoAsset {
     @Column(name = "status", nullable = false, length = 20)
     private VideoStatus status = VideoStatus.PROCESSING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "publish_status", nullable = false, length = 20)
+    private VideoPublishStatus publishStatus = VideoPublishStatus.UNPUBLISHED;
+
+    @Column(name = "published_at")
+    private LocalDateTime publishedAt;
+
+    @Column(name = "unpublished_at")
+    private LocalDateTime unpublishedAt;
+
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 

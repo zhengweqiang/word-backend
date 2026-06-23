@@ -47,8 +47,15 @@ public class VideoStorageConfig {
     @Column(name = "region", nullable = false, length = 64)
     private String region;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider_type", nullable = false, length = 32)
+    private VideoStorageProviderType providerType = VideoStorageProviderType.TENCENT_VOD;
+
     @Column(name = "sub_app_id")
     private Long subAppId;
+
+    @Column(name = "space_name", length = 128)
+    private String spaceName;
 
     @Column(name = "procedure_name", length = 128)
     private String procedureName;

@@ -16,6 +16,7 @@ import type {
     UpdateVideoStorageConfigPayload,
     VideoStorageConfigResponse,
     VideoStorageConfigStatus,
+    VideoStorageProviderType,
 } from "@/types/api";
 
 type FormState = {
@@ -23,7 +24,9 @@ type FormState = {
     secretId: string;
     secretKey: string;
     region: string;
+    providerType: VideoStorageProviderType;
     subAppId: string;
+    spaceName: string;
     procedureName: string;
     status: VideoStorageConfigStatus;
     isDefault: boolean;
@@ -35,7 +38,9 @@ const createEmptyForm = (): FormState => ({
     secretId: "",
     secretKey: "",
     region: "ap-guangzhou",
+    providerType: "TENCENT_VOD",
     subAppId: "",
+    spaceName: "",
     procedureName: "",
     status: "DISABLED",
     isDefault: false,
@@ -47,7 +52,9 @@ const createFormFromConfig = (config?: VideoStorageConfigResponse | null): FormS
     secretId: "",
     secretKey: "",
     region: config?.region ?? "ap-guangzhou",
+    providerType: config?.providerType ?? "TENCENT_VOD",
     subAppId: config?.subAppId ? String(config.subAppId) : "",
+    spaceName: config?.spaceName ?? "",
     procedureName: config?.procedureName ?? "",
     status: config?.status ?? "DISABLED",
     isDefault: config?.isDefault ?? false,
@@ -69,6 +76,13 @@ export function VideoStoragePage() {
         () => configs().find((config) => config.id === selectedConfigId()) ?? null,
     );
     const isEditing = createMemo(() => selectedConfig() !== null);
+    const isVolcengine = createMemo(() => form.providerType === "VOLCENGINE_VOD");
+    const secretIdLabel = createMemo(() => isVolcengine() ? "AccessKeyId" : "SecretId");
+    const secretKeyLabel = createMemo(() => isVolcengine() ? "SecretAccessKey" : "SecretKey");
+    const subAppIdLabel = createMemo(() => isVolcengine() ? "AppId" : "SubAppId");
+
+    const providerLabel = (providerType?: VideoStorageProviderType | null) =>
+        providerType === "VOLCENGINE_VOD" ? "火山云点播" : "腾讯云点播";
 
     const syncForm = (config?: VideoStorageConfigResponse | null) => {
         setForm(createFormFromConfig(config));
@@ -114,7 +128,9 @@ export function VideoStoragePage() {
         secretId: form.secretId,
         secretKey: form.secretKey,
         region: form.region.trim(),
+        providerType: form.providerType,
         subAppId: form.subAppId.trim() ? Number(form.subAppId.trim()) : undefined,
+        spaceName: form.spaceName.trim() || undefined,
         procedureName: form.procedureName.trim() || undefined,
         status: form.status,
         isDefault: form.isDefault,
@@ -142,16 +158,19 @@ export function VideoStoragePage() {
                 throw new Error("请输入地域");
             }
             if (!isEditing() && !form.secretId.trim()) {
-                throw new Error("新建配置时必须填写 SecretId");
+                throw new Error(`新建配置时必须填写 ${secretIdLabel()}`);
             }
             if (!isEditing() && !form.secretKey.trim()) {
-                throw new Error("新建配置时必须填写 SecretKey");
+                throw new Error(`新建配置时必须填写 ${secretKeyLabel()}`);
+            }
+            if (isVolcengine() && !form.spaceName.trim()) {
+                throw new Error("请输入火山云空间名称");
             }
             if (form.isDefault && form.status !== "ENABLED") {
                 throw new Error("默认配置必须处于启用状态");
             }
             if (form.subAppId.trim() && Number.isNaN(Number(form.subAppId.trim()))) {
-                throw new Error("SubAppId 必须是数字");
+                throw new Error(`${subAppIdLabel()} 必须是数字`);
             }
 
             const payload = buildPayload();
@@ -258,7 +277,7 @@ export function VideoStoragePage() {
             <PageHeader
                 eyebrow="Media"
                 title="视频存储"
-                description="统一维护腾讯云点播连接信息，控制平台默认上传配置，并验证后台连通性。"
+                description="统一维护腾讯云/火山云点播连接信息，控制平台默认上传配置，并验证后台连通性。"
                 actions={
                     <div class="flex flex-wrap items-center gap-3">
                         <Button variant="outline" onClick={() => void loadConfigs()}>
@@ -290,7 +309,7 @@ export function VideoStoragePage() {
                         >
                             <Show
                                 when={configs().length > 0}
-                                fallback={<EmptyState title="暂无配置" description="先创建一条腾讯云点播配置。" />}
+                                fallback={<EmptyState title="暂无配置" description="先创建一条视频点播配置。" />}
                             >
                                 <div class="space-y-3">
                                     <For each={configs()}>
@@ -306,6 +325,7 @@ export function VideoStoragePage() {
                                                 <div class="flex flex-wrap items-start justify-between gap-3">
                                                     <div class="space-y-1">
                                                         <p class="font-medium text-foreground">{config.configName}</p>
+                                                        <p class="text-xs text-muted-foreground">{providerLabel(config.providerType)}</p>
                                                         <p class="text-xs text-muted-foreground">{config.region}</p>
                                                         <p class="text-xs text-muted-foreground">{config.secretIdMasked}</p>
                                                     </div>
@@ -385,7 +405,7 @@ export function VideoStoragePage() {
                     <CardHeader>
                         <CardTitle>{isEditing() ? "编辑配置" : "创建配置"}</CardTitle>
                         <CardDescription>
-                            编辑时如不填写新密钥，后端会保留原有 SecretId 与 SecretKey。
+                            编辑时如不填写新凭据，后端会保留原有密钥信息。
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -401,38 +421,87 @@ export function VideoStoragePage() {
                                     />
                                 </div>
                                 <div class="space-y-2">
-                                    <Label for="region">地域</Label>
-                                    <Input
-                                        id="region"
-                                        value={form.region}
-                                        onInput={(event) => setForm("region", event.currentTarget.value)}
-                                        placeholder="例如 ap-guangzhou"
-                                    />
+                                    <Label for="providerType">存储提供商</Label>
+                                    <select
+                                        id="providerType"
+                                        class="h-11 w-full rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                        value={form.providerType}
+                                        onChange={(event) => {
+                                            const nextProvider = event.currentTarget.value as VideoStorageProviderType;
+                                            setForm("providerType", nextProvider);
+                                            if (nextProvider === "VOLCENGINE_VOD" && form.region === "ap-guangzhou") {
+                                                setForm("region", "cn-north-1");
+                                            }
+                                        }}
+                                    >
+                                        <option value="TENCENT_VOD">腾讯云点播</option>
+                                        <option value="VOLCENGINE_VOD">火山云点播</option>
+                                    </select>
                                 </div>
                             </div>
 
                             <div class="grid gap-4 md:grid-cols-2">
                                 <div class="space-y-2">
-                                    <Label for="secretId">SecretId</Label>
+                                    <Label for="region">地域</Label>
+                                    <Input
+                                        id="region"
+                                        value={form.region}
+                                        onInput={(event) => setForm("region", event.currentTarget.value)}
+                                        placeholder={isVolcengine() ? "例如 cn-north-1" : "例如 ap-guangzhou"}
+                                    />
+                                </div>
+                                <Show
+                                    when={isVolcengine()}
+                                    fallback={
+                                        <div class="space-y-2">
+                                            <Label for="subAppId">{subAppIdLabel()}</Label>
+                                            <Input
+                                                id="subAppId"
+                                                value={form.subAppId}
+                                                onInput={(event) => setForm("subAppId", event.currentTarget.value)}
+                                                placeholder="可选，例如 123456"
+                                            />
+                                        </div>
+                                    }
+                                >
+                                    <div class="space-y-2">
+                                        <Label for="spaceName">空间名称</Label>
+                                        <Input
+                                            id="spaceName"
+                                            value={form.spaceName}
+                                            onInput={(event) => setForm("spaceName", event.currentTarget.value)}
+                                            placeholder="例如 learning-video-space"
+                                        />
+                                    </div>
+                                </Show>
+                            </div>
+
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <div class="space-y-2">
+                                    <Label for="secretId">{secretIdLabel()}</Label>
                                     <Input
                                         id="secretId"
                                         type="password"
                                         value={form.secretId}
                                         onInput={(event) => setForm("secretId", event.currentTarget.value)}
-                                        placeholder={selectedConfig()?.secretIdMasked ? "留空表示沿用当前 SecretId" : "请输入 SecretId"}
+                                        placeholder={selectedConfig()?.secretIdMasked
+                                            ? `留空表示沿用当前 ${secretIdLabel()}`
+                                            : `请输入 ${secretIdLabel()}`}
                                     />
                                     <Show when={selectedConfig()?.secretIdMasked}>
                                         <p class="text-xs text-muted-foreground">当前：{selectedConfig()?.secretIdMasked}</p>
                                     </Show>
                                 </div>
                                 <div class="space-y-2">
-                                    <Label for="secretKey">SecretKey</Label>
+                                    <Label for="secretKey">{secretKeyLabel()}</Label>
                                     <Input
                                         id="secretKey"
                                         type="password"
                                         value={form.secretKey}
                                         onInput={(event) => setForm("secretKey", event.currentTarget.value)}
-                                        placeholder={selectedConfig()?.secretKeyMasked ? "留空表示沿用当前 SecretKey" : "请输入 SecretKey"}
+                                        placeholder={selectedConfig()?.secretKeyMasked
+                                            ? `留空表示沿用当前 ${secretKeyLabel()}`
+                                            : `请输入 ${secretKeyLabel()}`}
                                     />
                                     <Show when={selectedConfig()?.secretKeyMasked}>
                                         <p class="text-xs text-muted-foreground">当前：{selectedConfig()?.secretKeyMasked}</p>
@@ -442,23 +511,27 @@ export function VideoStoragePage() {
 
                             <div class="grid gap-4 md:grid-cols-2">
                                 <div class="space-y-2">
-                                    <Label for="subAppId">SubAppId</Label>
-                                    <Input
-                                        id="subAppId"
-                                        value={form.subAppId}
-                                        onInput={(event) => setForm("subAppId", event.currentTarget.value)}
-                                        placeholder="可选，例如 123456"
-                                    />
-                                </div>
-                                <div class="space-y-2">
                                     <Label for="procedureName">任务流</Label>
                                     <Input
                                         id="procedureName"
                                         value={form.procedureName}
                                         onInput={(event) => setForm("procedureName", event.currentTarget.value)}
-                                        placeholder="可选，例如 video-transcode"
+                                        placeholder={isVolcengine()
+                                            ? "可选，火山云上传扩展参数"
+                                            : "可选，例如 video-transcode"}
                                     />
                                 </div>
+                                <Show when={isVolcengine()}>
+                                    <div class="space-y-2">
+                                        <Label for="subAppId">{subAppIdLabel()}</Label>
+                                        <Input
+                                            id="subAppId"
+                                            value={form.subAppId}
+                                            onInput={(event) => setForm("subAppId", event.currentTarget.value)}
+                                            placeholder="可选，例如 123456"
+                                        />
+                                    </div>
+                                </Show>
                             </div>
 
                             <div class="grid gap-4 md:grid-cols-2">

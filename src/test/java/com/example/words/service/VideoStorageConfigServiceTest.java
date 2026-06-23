@@ -16,11 +16,15 @@ import com.example.words.model.UserRole;
 import com.example.words.model.UserStatus;
 import com.example.words.model.VideoStorageConfig;
 import com.example.words.model.VideoStorageConfigStatus;
+import com.example.words.model.VideoStorageProviderType;
 import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.VideoAssetRepository;
 import com.example.words.repository.VideoStorageConfigRepository;
 import com.example.words.security.AuthenticatedUser;
+import com.example.words.service.video.VideoStorageGateway;
+import com.example.words.service.video.VideoStorageGatewayRegistry;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +49,12 @@ class VideoStorageConfigServiceTest {
     private AppUserRepository appUserRepository;
 
     @Mock
-    private TencentVodGateway tencentVodGateway;
+    private VideoStorageGateway tencentStorageGateway;
+
+    @Mock
+    private VideoStorageGateway volcengineStorageGateway;
+
+    private VideoStorageGatewayRegistry gatewayRegistry;
 
     private VideoStorageConfigCryptoService cryptoService;
     private CurrentUserService currentUserService;
@@ -59,13 +68,16 @@ class VideoStorageConfigServiceTest {
         );
         currentUserService = new CurrentUserService(appUserRepository);
         accessControlService = new AccessControlService(null, null, null);
+        when(tencentStorageGateway.providerType()).thenReturn(VideoStorageProviderType.TENCENT_VOD);
+        when(volcengineStorageGateway.providerType()).thenReturn(VideoStorageProviderType.VOLCENGINE_VOD);
+        gatewayRegistry = new VideoStorageGatewayRegistry(List.of(tencentStorageGateway, volcengineStorageGateway));
         videoStorageConfigService = new VideoStorageConfigService(
                 videoStorageConfigRepository,
                 videoAssetRepository,
                 cryptoService,
                 currentUserService,
                 accessControlService,
-                tencentVodGateway
+                gatewayRegistry
         );
     }
 
@@ -84,6 +96,8 @@ class VideoStorageConfigServiceTest {
                 "ap-guangzhou",
                 123456L,
                 "vod-procedure",
+                VideoStorageProviderType.TENCENT_VOD,
+                null,
                 VideoStorageConfigStatus.ENABLED,
                 Boolean.FALSE,
                 "default"
@@ -118,6 +132,8 @@ class VideoStorageConfigServiceTest {
                 "ap-shanghai",
                 223344L,
                 "procedure-b",
+                VideoStorageProviderType.TENCENT_VOD,
+                null,
                 VideoStorageConfigStatus.ENABLED,
                 Boolean.TRUE,
                 "updated"
@@ -172,6 +188,20 @@ class VideoStorageConfigServiceTest {
         assertTrue(captor.getValue().getIsDefault());
     }
 
+    @Test
+    void testShouldUseConfigProviderGateway() {
+        AppUser actor = admin();
+        VideoStorageConfig existing = existingConfig();
+        existing.setProviderType(VideoStorageProviderType.VOLCENGINE_VOD);
+
+        authenticate(actor);
+        when(videoStorageConfigRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+
+        videoStorageConfigService.test(existing.getId());
+
+        verify(volcengineStorageGateway).validate(existing);
+    }
+
     private AppUser admin() {
         AppUser actor = new AppUser();
         actor.setId(1L);
@@ -192,6 +222,7 @@ class VideoStorageConfigServiceTest {
         config.setSecretKeyEncrypted("v1:secret-key");
         config.setSecretKeyMasked("key****mask");
         config.setRegion("ap-shanghai");
+        config.setProviderType(VideoStorageProviderType.TENCENT_VOD);
         config.setStatus(VideoStorageConfigStatus.ENABLED);
         config.setIsDefault(Boolean.FALSE);
         return config;

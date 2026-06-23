@@ -306,6 +306,24 @@ export interface Page<T> {
   empty: boolean;
 }
 
+export interface StudentVideo {
+  id: number;
+  title: string;
+  description?: string | null;
+  coverUrl?: string | null;
+  durationSeconds?: number | null;
+  createdByDisplayName: string;
+  publishedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface VideoAccessResponse {
+  videoId: number;
+  mode: 'PREVIEW' | 'PLAY';
+  url: string;
+  coverUrl?: string | null;
+}
+
 export interface ExamOption {
   key: string;
   translation: string;

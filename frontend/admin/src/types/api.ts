@@ -318,8 +318,10 @@ export interface SyllableBackfillResponse {
 }
 
 export type VideoStorageConfigStatus = "ENABLED" | "DISABLED";
+export type VideoStorageProviderType = "TENCENT_VOD" | "VOLCENGINE_VOD";
 export type VideoStatus = "PROCESSING" | "READY" | "FAILED";
-export type VideoAccessMode = "PREVIEW";
+export type VideoPublishStatus = "UNPUBLISHED" | "PUBLISHED";
+export type VideoAccessMode = "PREVIEW" | "PLAY";
 
 export interface VideoResponse {
     id: number;
@@ -333,6 +335,7 @@ export interface VideoResponse {
     coverUrl?: string | null;
     durationSeconds?: number | null;
     status: VideoStatus;
+    publishStatus: VideoPublishStatus;
     errorMessage?: string | null;
     createdBy: number;
     createdByDisplayName: string;
@@ -342,6 +345,8 @@ export interface VideoResponse {
     storageConfigName?: string | null;
     canManage: boolean;
     canPreview: boolean;
+    publishedAt?: string | null;
+    unpublishedAt?: string | null;
     createdAt?: string | null;
     updatedAt?: string | null;
 }
@@ -359,7 +364,9 @@ export interface VideoStorageConfigResponse {
     secretIdMasked: string;
     secretKeyMasked: string;
     region: string;
+    providerType: VideoStorageProviderType;
     subAppId?: number | null;
+    spaceName?: string | null;
     procedureName?: string | null;
     status: VideoStorageConfigStatus;
     isDefault: boolean;
@@ -373,7 +380,9 @@ export interface CreateVideoStorageConfigPayload {
     secretId: string;
     secretKey: string;
     region: string;
+    providerType: VideoStorageProviderType;
     subAppId?: number;
+    spaceName?: string;
     procedureName?: string;
     status: VideoStorageConfigStatus;
     isDefault: boolean;
@@ -385,7 +394,9 @@ export interface UpdateVideoStorageConfigPayload {
     secretId?: string;
     secretKey?: string;
     region: string;
+    providerType: VideoStorageProviderType;
     subAppId?: number;
+    spaceName?: string;
     procedureName?: string;
     status: VideoStorageConfigStatus;
     isDefault: boolean;

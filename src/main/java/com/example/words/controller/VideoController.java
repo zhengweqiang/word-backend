@@ -3,6 +3,7 @@ package com.example.words.controller;
 import com.example.words.dto.VideoAccessResponse;
 import com.example.words.dto.VideoResponse;
 import com.example.words.model.ResourceScopeType;
+import com.example.words.model.VideoPublishStatus;
 import com.example.words.model.VideoStatus;
 import com.example.words.service.VideoAssetService;
 import org.springframework.data.domain.Page;
@@ -35,8 +36,16 @@ public class VideoController {
             @RequestParam(defaultValue = "12") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) VideoStatus status,
+            @RequestParam(required = false) VideoPublishStatus publishStatus,
             @RequestParam(required = false) ResourceScopeType scopeType) {
-        return ResponseEntity.ok(videoAssetService.listVisibleVideosPage(page, size, keyword, status, scopeType));
+        return ResponseEntity.ok(videoAssetService.listVisibleVideosPage(
+                page,
+                size,
+                keyword,
+                status,
+                publishStatus,
+                scopeType
+        ));
     }
 
     @GetMapping("/{id}")
@@ -60,6 +69,16 @@ public class VideoController {
     @PostMapping("/{id}/sync")
     public ResponseEntity<VideoResponse> sync(@PathVariable Long id) {
         return ResponseEntity.ok(videoAssetService.sync(id));
+    }
+
+    @PostMapping("/{id}/publish")
+    public ResponseEntity<VideoResponse> publish(@PathVariable Long id) {
+        return ResponseEntity.ok(videoAssetService.publish(id));
+    }
+
+    @PostMapping("/{id}/unpublish")
+    public ResponseEntity<VideoResponse> unpublish(@PathVariable Long id) {
+        return ResponseEntity.ok(videoAssetService.unpublish(id));
     }
 
     @DeleteMapping("/{id}")
