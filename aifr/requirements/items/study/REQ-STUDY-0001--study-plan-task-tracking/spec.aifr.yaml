@@ -140,3 +140,6 @@ aifr_spec:
   open_questions:
     - 每种 StudyRecordResult 是否都应计入完成，需以 StudyTaskCompletionPolicy 为准但产品文案未明确。
     - 专注度公式和阈值的产品解释需要补充。
+
+
+
