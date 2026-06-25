@@ -1,0 +1,269 @@
+aifr_spec:
+  schema_version: "1.0.0"
+  id: REQ-STUDY-0002
+  version: "1.0.0"
+  title: 班级范围学习计划约束
+  type: functional
+  status: draft
+  priority: critical
+
+  identity:
+    primary_domain: STUDY
+    domain_path: study
+    frozen_slug: classroom-study-plan-scope
+    canonical_path: aifr/requirements/items/study/REQ-STUDY-0002--classroom-study-plan-scope/spec.aifr.yaml
+    naming_standard_version: "1.0.0"
+    related_domains:
+      - ORG
+      - DICT
+
+  lifecycle:
+    created_at: "2026-06-24"
+    updated_at: "2026-06-24"
+    owner: backend
+    reviewers:
+      - backend
+      - qa
+      - product
+
+  versioning:
+    change_type: initial
+    previous_version: null
+    supersedes: []
+    superseded_by: null
+    breaking_change: false
+    change_summary: 从 StudyPlanService 中班级解析、班级辞书交集和发布流程反推的初始需求。
+
+  revision_history:
+    - version: "1.0.0"
+      change_type: initial
+      summary: 初始代码基线。
+
+  intent:
+    user_goal: 教师或管理员创建学习计划时，只能选择自己可管理且属于同一教师的班级，并使用这些班级共同可用的辞书。
+    business_value: 防止学习计划跨教师混班或使用部分班级不可用的辞书，保证发布后学生、辞书和计划范围一致。
+
+  scope:
+    in:
+      - 创建学习计划时解析 classroomIds
+      - 校验 classroomIds 非空
+      - 校验教师只能选择自己班级
+      - 校验一个计划的班级属于同一教师
+      - 校验 dictionaryId 对所有所选班级可用
+      - 保存 study_plan_classrooms 关联
+      - 发布计划时按班级成员创建 StudentStudyPlan
+      - 发布计划时把计划辞书分配给班级学生
+    out:
+      - 学习计划编辑时变更班级范围
+      - 班级成员变更后自动同步已发布计划
+      - 跨教师协作学习计划
+      - 班级范围外的个别学生加减
+
+  actors:
+    primary:
+      - teacher
+      - admin
+    secondary:
+      - student
+      - classroom_repository
+      - classroom_member_repository
+      - dictionary_service
+      - dictionary_assignment_service
+
+  domain_terms:
+    study_plan_classroom: 学习计划与班级的关联记录。
+    selected_classrooms: 创建计划请求中的 classroomIds 去重后解析出的班级集合。
+    plan_teacher: 学习计划归属教师；教师创建时为当前教师，管理员创建时为所选班级所属教师。
+    dictionary_available_for_classrooms: 目标辞书属于所有所选班级的可见辞书交集。
+    publish_target_students: 发布时根据计划班级成员快照推导出的学生集合。
+
+  preconditions:
+    - 调用者已认证。
+    - 调用者角色必须是 ADMIN 或 TEACHER。
+    - request.classroomIds 必须非空。
+    - request.dictionaryId 必须存在。
+
+  rules:
+    - id: RULE-001
+      description: 创建学习计划必须选择至少一个班级。
+      invariant: create_study_plan_allowed requires classroomIds is not empty
+
+    - id: RULE-002
+      description: 教师只能选择 teacherId 等于自己的班级，管理员可以选择任意班级。
+      invariant: teacher_selected_classrooms_allowed iff all(classroom.teacher_id = actor.id)
+
+    - id: RULE-003
+      description: 一个学习计划的所有班级必须属于同一个 teacherId。
+      invariant: count(distinct selected_classrooms.teacher_id) = 1
+
+    - id: RULE-004
+      description: 学习计划归属教师必须等于所选班级的 teacherId；教师创建时必须等于当前教师。
+      formula: plan.teacher_id = actor.id when actor.role = TEACHER else selected_classrooms[0].teacher_id
+
+    - id: RULE-005
+      description: 创建计划时，dictionaryId 必须存在于所有所选班级共同可见的辞书集合中。
+      invariant: dictionary_available_for_classrooms(dictionaryId, selected_classrooms) = true
+
+    - id: RULE-006
+      description: 创建草稿计划后，必须为每个所选班级保存一条 study_plan_classrooms 关联。
+      invariant: count(study_plan_classrooms where study_plan_id = plan.id) = count(distinct selected_classrooms)
+
+    - id: RULE-007
+      description: 发布计划时，目标学生集合来自计划班级当前成员去重后的集合。
+      formula: publish_target_students = distinct(classroom_members for plan.classroom_ids)
+
+    - id: RULE-008
+      description: 发布计划时，系统必须先确认调用者可给每个目标学生分配计划辞书，再创建学生计划。
+      invariant: publish_allowed requires can_assign_dictionary_to_student for all publish_target_students
+
+  scenarios:
+    - id: SCN-001
+      name: 教师创建同一教师下多个班级的学习计划
+      given:
+        - actor.role = TEACHER
+        - actor.id = 7
+        - classroomId = 100 的 teacherId = 7
+        - classroomId = 101 的 teacherId = 7
+        - dictionaryId = 10 同时分配给两个班级
+      when:
+        - 调用 POST /api/study-plans
+      then:
+        - 创建 DRAFT 状态学习计划
+        - study_plan.teacherId = 7
+        - 保存两个 StudyPlanClassroom
+
+    - id: SCN-002
+      name: 创建计划拒绝空班级集合
+      given:
+        - request.classroomIds = []
+      when:
+        - 调用 POST /api/study-plans
+      then:
+        - 返回业务错误 classroomIds cannot be empty
+
+    - id: SCN-003
+      name: 创建计划拒绝跨教师班级
+      given:
+        - classroomId = 100 的 teacherId = 7
+        - classroomId = 101 的 teacherId = 8
+      when:
+        - 调用 POST /api/study-plans
+      then:
+        - 返回业务错误 All classrooms in one study plan must belong to the same teacher
+
+    - id: SCN-004
+      name: 创建计划拒绝不在班级交集中的辞书
+      given:
+        - classroomIds = [100, 101]
+        - dictionaryId = 10 未同时分配给两个班级
+      when:
+        - 调用 POST /api/study-plans
+      then:
+        - 返回业务错误 dictionaryId is not associated with all selected classrooms
+
+    - id: SCN-005
+      name: 发布计划按班级成员创建学生计划
+      given:
+        - studyPlan.id = 55 已关联 classroomIds = [100, 101]
+        - 两个班级成员去重后为 studentIds = [20, 21]
+        - 调用者可向两个学生分配计划辞书
+      when:
+        - 调用 POST /api/study-plans/55/publish
+      then:
+        - 给 studentIds = [20, 21] 分配计划辞书
+        - 为两个学生创建 StudentStudyPlan
+        - studyPlan.status = PUBLISHED
+
+  acceptance_criteria:
+    - id: AC-001
+      text: 创建学习计划时，空 classroomIds 必须被拒绝。
+      verifies:
+        - RULE-001
+
+    - id: AC-002
+      text: 教师创建计划时不得选择其他教师的班级。
+      verifies:
+        - RULE-002
+
+    - id: AC-003
+      text: 同一个学习计划不得跨多个教师的班级。
+      verifies:
+        - RULE-003
+        - RULE-004
+
+    - id: AC-004
+      text: 创建学习计划时，dictionaryId 必须属于所选班级的共同可见辞书。
+      verifies:
+        - RULE-005
+
+    - id: AC-005
+      text: 创建计划成功后必须保存去重后的班级关联。
+      verifies:
+        - RULE-006
+
+    - id: AC-006
+      text: 发布计划必须基于班级成员去重生成目标学生，并执行逐学生辞书分配权限校验。
+      verifies:
+        - RULE-007
+        - RULE-008
+
+  interfaces:
+    apis:
+      - method: POST
+        path: /api/study-plans
+        request_schema: CreateStudyPlanRequest
+        response_schema: StudyPlanResponse
+      - method: POST
+        path: /api/study-plans/{id}/publish
+        request_schema: none
+        response_schema: StudyPlanResponse
+      - method: GET
+        path: /api/study-plans
+        request_schema: none
+        response_schema: List<StudyPlanResponse>
+    persistence:
+      - table: study_plan_classrooms
+        constraints: unique(study_plan_id, classroom_id), study_plan_id references study_plans(id) on delete cascade, classroom_id references classrooms(id) on delete cascade
+      - table: classrooms
+        usage: 校验班级归属教师并解析 plan.teacher_id
+      - table: classroom_members
+        usage: 发布计划时生成目标学生集合
+
+  trace:
+    expected_code:
+      - service: StudyPlanService
+      - method_hint: resolveManagedClassrooms
+      - method_hint: ensureDictionaryAvailableForClassrooms
+      - method_hint: publishStudyPlan
+      - service: DictionaryService
+      - service: AccessControlService
+      - repository: StudyPlanClassroomRepository
+      - repository: ClassroomMemberRepository
+      - migration: V14__add_study_plan_support.sql
+    expected_tests:
+      - StudyPlanServiceTest#createStudyPlanShouldPersistDraftPlan
+      - StudyPlanServiceTest#createStudyPlanShouldRejectDictionaryOutsideSelectedClassroomIntersection
+      - StudyPlanServiceTest#publishStudyPlanShouldAssignDictionaryToClassroomMembers
+
+  risk:
+    level: critical
+    reasons:
+      - 该约束决定学习计划覆盖哪些学生和辞书，错误会导致跨班级、跨教师或不可见辞书的学习任务。
+      - 发布流程会写入学生计划和辞书分配，涉及多表一致性。
+
+  non_functional:
+    security:
+      - 教师不得借学习计划选择其他教师班级。
+      - 发布前必须逐学生执行辞书分配权限校验。
+    reliability:
+      - 创建计划和保存班级关联必须在事务中完成。
+      - 发布计划时目标学生应按班级成员去重，避免重复创建学生计划。
+    performance:
+      - 班级 ID 和学生 ID 应去重后处理，避免重复写入和重复权限校验。
+
+  open_questions:
+    - 班级成员在计划发布后新增，是否应自动加入已发布计划，目前代码未实现。
+    - 班级辞书分配移除后，已有学习计划是否继续有效，目前代码未重新校验。
+
+
+
