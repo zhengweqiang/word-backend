@@ -1,5 +1,6 @@
 package com.example.words.service;
 
+import com.example.words.dto.AppendStudyPlanStudentsRequest;
 import com.example.words.dto.CreateStudyPlanRequest;
 import com.example.words.dto.RecordStudyRequest;
 import com.example.words.dto.StudentAttentionDailyStatResponse;
@@ -15,6 +16,7 @@ import com.example.words.exception.ResourceNotFoundException;
 import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
 import com.example.words.model.ClassroomMember;
+import com.example.words.model.ClassroomStatus;
 import com.example.words.model.Dictionary;
 import com.example.words.model.DictionaryWord;
 import com.example.words.model.MetaWord;
@@ -205,6 +207,9 @@ public class StudyPlanService {
         List<Long> classroomIds = studyPlanClassroomRepository.findByStudyPlanId(studyPlanId).stream()
                 .map(StudyPlanClassroom::getClassroomId)
                 .toList();
+        List<Classroom> classrooms = resolveManagedClassrooms(classroomIds, actor);
+        ensureDictionaryAvailableForClassrooms(studyPlan.getDictionaryId(), classrooms, actor);
+
         Set<Long> studentIds = classroomIds.isEmpty()
                 ? Set.of()
                 : classroomMemberRepository.findByClassroomIdIn(classroomIds).stream()
@@ -229,6 +234,51 @@ public class StudyPlanService {
         studyPlan.setStatus(StudyPlanStatus.PUBLISHED);
         StudyPlan savedStudyPlan = studyPlanRepository.save(studyPlan);
         return toStudyPlanResponse(savedStudyPlan);
+    }
+
+    @Transactional
+    public StudyPlanResponse appendStudents(Long studyPlanId, AppendStudyPlanStudentsRequest request, AppUser actor) {
+        StudyPlan studyPlan = getStudyPlanEntity(studyPlanId);
+        ensureCanManageStudyPlan(actor, studyPlan);
+        ensurePublished(studyPlan);
+
+        List<Long> classroomIds = studyPlanClassroomRepository.findByStudyPlanId(studyPlanId).stream()
+                .map(StudyPlanClassroom::getClassroomId)
+                .distinct()
+                .toList();
+        resolveManagedClassrooms(classroomIds, actor);
+
+        List<Long> studentIds = request == null || request.getStudentIds() == null
+                ? List.of()
+                : request.getStudentIds().stream()
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (studentIds.isEmpty()) {
+            throw new BadRequestException("studentIds cannot be empty");
+        }
+
+        for (Long studentId : studentIds) {
+            if (!classroomMemberRepository.existsByClassroomIdInAndStudentId(classroomIds, studentId)) {
+                throw new BadRequestException(
+                        "studentId is not a current member of the study plan classrooms: " + studentId);
+            }
+        }
+
+        Dictionary dictionary = dictionaryService.findById(studyPlan.getDictionaryId())
+                .orElseThrow(() -> new ResourceNotFoundException("Dictionary not found: " + studyPlan.getDictionaryId()));
+
+        for (Long studentId : studentIds) {
+            accessControlService.ensureCanAssignDictionaryToStudent(actor, dictionary, studentId);
+        }
+        dictionaryAssignmentService.assignDictionaryToStudents(dictionary, actor, studentIds);
+
+        LocalDateTime joinedAt = resolveNow(studyPlan);
+        for (Long studentId : studentIds) {
+            getOrCreateStudentStudyPlan(studyPlanId, studentId, joinedAt);
+        }
+
+        return toStudyPlanResponse(studyPlan);
     }
 
     @Transactional
@@ -545,6 +595,9 @@ public class StudyPlanService {
 
         Set<Long> teacherIds = new LinkedHashSet<>();
         for (Classroom classroom : classrooms) {
+            if (classroom.getStatus() == ClassroomStatus.ARCHIVED) {
+                throw new AccessDeniedException("Archived classroom cannot be used for study plans");
+            }
             teacherIds.add(classroom.getTeacherId());
             if (actor.getRole() == UserRole.TEACHER && !Objects.equals(actor.getId(), classroom.getTeacherId())) {
                 throw new AccessDeniedException("You do not have permission to manage classroom " + classroom.getId());

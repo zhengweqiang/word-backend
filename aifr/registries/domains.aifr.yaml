@@ -27,7 +27,7 @@ domains:
   - code: ORG
     path: org
     name: Classroom Organization
-    description: 班级、师生关系、班级成员和班级辞书分配
+    description: 班级、师生关系、班级成员、班级群和班级辞书分配
     id_number_width: 4
   - code: STUDY
     path: study
@@ -53,4 +53,9 @@ domains:
     path: adm
     name: Admin Maintenance
     description: 后台维护任务和数据补全工具
+    id_number_width: 4
+  - code: VIDEO
+    path: video
+    name: Teaching Video
+    description: 教学视频存储配置、云端同步、发布、老师素材库、班级群分享和学生播放
     id_number_width: 4

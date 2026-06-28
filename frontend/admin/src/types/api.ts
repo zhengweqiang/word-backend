@@ -126,6 +126,28 @@ export interface ClassroomResponse {
     updatedAt?: string | null;
 }
 
+export type ClassroomGroupFeedMessageType = "TEXT" | "DICTIONARY" | "STUDY_PLAN" | "VIDEO";
+
+export interface ClassroomConversationResponse {
+    classroomId: number;
+    classroomName: string;
+    lastMessageSummary: string;
+    lastMessageAt?: string | null;
+}
+
+export interface ClassroomGroupFeedMessageResponse {
+    id: number;
+    classroomId: number;
+    messageType: ClassroomGroupFeedMessageType;
+    content?: string | null;
+    resourceId?: number | null;
+    resourceTitle?: string | null;
+    resourceSummary?: string | null;
+    authorUserId: number;
+    authorName: string;
+    createdAt?: string | null;
+}
+
 export interface StudyPlanResponse {
     id: number;
     name: string;
@@ -320,7 +342,7 @@ export interface SyllableBackfillResponse {
 export type VideoStorageConfigStatus = "ENABLED" | "DISABLED";
 export type VideoStorageProviderType = "TENCENT_VOD" | "VOLCENGINE_VOD";
 export type VideoStatus = "PROCESSING" | "READY" | "FAILED";
-export type VideoPublishStatus = "UNPUBLISHED" | "PUBLISHED";
+export type VideoCloudPublishStatus = "UNPUBLISHED" | "PUBLISHED";
 export type VideoAccessMode = "PREVIEW" | "PLAY";
 
 export interface VideoResponse {
@@ -335,7 +357,7 @@ export interface VideoResponse {
     coverUrl?: string | null;
     durationSeconds?: number | null;
     status: VideoStatus;
-    publishStatus: VideoPublishStatus;
+    cloudPublishStatus: VideoCloudPublishStatus;
     errorMessage?: string | null;
     createdBy: number;
     createdByDisplayName: string;
@@ -349,6 +371,12 @@ export interface VideoResponse {
     unpublishedAt?: string | null;
     createdAt?: string | null;
     updatedAt?: string | null;
+}
+
+export interface VideoCloudSyncResponse {
+    scanned: number;
+    imported: number;
+    updated: number;
 }
 
 export interface VideoAccessResponse {

@@ -11,4 +11,6 @@ public interface StudyPlanClassroomRepository extends JpaRepository<StudyPlanCla
     List<StudyPlanClassroom> findByStudyPlanId(Long studyPlanId);
 
     boolean existsByStudyPlanIdAndClassroomId(Long studyPlanId, Long classroomId);
+
+    boolean existsByClassroomId(Long classroomId);
 }

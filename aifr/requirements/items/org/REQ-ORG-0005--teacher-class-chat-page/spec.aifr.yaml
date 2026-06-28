@@ -1,0 +1,477 @@
+aifr_spec:
+  schema_version: "1.0.0"
+  id: REQ-ORG-0005
+  version: "1.1.0"
+  title: 教师端班级聊天页面
+  type: functional
+  status: draft
+  priority: high
+
+  identity:
+    primary_domain: ORG
+    domain_path: org
+    frozen_slug: teacher-class-chat-page
+    canonical_path: aifr/requirements/items/org/REQ-ORG-0005--teacher-class-chat-page/spec.aifr.yaml
+    naming_standard_version: "1.0.0"
+    related_domains:
+      - AUTH
+      - STUDY
+      - DICT
+
+  lifecycle:
+    created_at: "2026-06-27"
+    updated_at: "2026-06-28"
+    owner: frontend
+    reviewers:
+      - product
+      - frontend
+      - backend
+      - qa
+
+  versioning:
+    change_type: minor
+    previous_version: "1.0.0"
+    supersedes:
+      - REQ-ORG-0005@1.0.0
+    superseded_by: null
+    breaking_change: false
+    change_summary: 明确聊天页只分享已发布学习计划和已有视频资源，补充独立导航、会话排序、学生普通回复和轮询刷新规则。
+
+  revision_history:
+    - version: "1.0.0"
+      change_type: initial
+      summary: 初始需求版本。
+    - version: "1.1.0"
+      change_type: minor
+      summary: 将“词数任务”澄清为已发布学习计划分享，并补充聊天页入口、会话列表、重复分享、学生回复和刷新策略。
+
+  intent:
+    user_goal: 教师可以在一个类似飞书或微信会话的班级聊天页面中查看学生回复，并向班级分享已发布学习计划和已有视频资源。
+    business_value: 将班级沟通、学生反馈和学习资源分发集中在教师日常使用的会话式页面中，降低教师提醒学生学习和分发内容入口的操作成本。
+
+  scope:
+    in:
+      - 管理后台一级导航中的教师端班级聊天页面
+      - 类似飞书或微信的会话布局
+      - 教师查看自己负责的当前活跃班级会话列表
+      - 会话列表按最后一条消息时间倒序展示，无消息班级排在后面
+      - 教师查看目标班级的聊天消息和学生普通文字回复
+      - 教师发布普通文字消息
+      - 教师分享已创建且已发布的学习计划到班级聊天
+      - 教师分享已有且学生可观看的视频资源到班级聊天
+      - 教师在分享学习计划或视频资源前预览卡片摘要
+      - 同一个已发布学习计划在同一个班级聊天中只能分享一次
+      - 页面展示消息发送状态、失败重试入口和基础空状态
+      - 页面打开后每 30 秒轮询刷新当前班级消息和会话列表
+      - 页面复用班级群消息流的成员可见性和资源二次权限校验规则
+    out:
+      - 学生端聊天页面重做
+      - 在聊天页创建、编辑、发布或配置学习计划
+      - 词数打卡任务、轻量任务或独立词数任务模型
+      - 未发布学习计划分享
+      - 同一学习计划在同一班级重复分享
+      - 私聊
+      - 多班级合并群聊
+      - 实时 WebSocket 或 SSE 推送
+      - 未读数、红点、已读状态和已读回执
+      - 音频通话或视频会议
+      - 文件附件上传
+      - 消息撤回、置顶和@提醒
+      - 消息审核流
+      - 视频资源上传、外链解析、转码和媒资管理后台
+      - 学习计划卡片下的评论楼中楼
+      - 学习计划完成统计报表
+
+  actors:
+    primary:
+      - teacher
+    secondary:
+      - student
+      - classroom_service
+      - classroom_group_feed_service
+      - study_plan_service
+      - video_asset_service
+      - access_control_service
+
+  domain_terms:
+    teacher_class_chat_page: 管理后台一级导航中的教师专用班级聊天页面，由班级会话列表、当前班级会话区和发布工具区组成。
+    conversation_layout: 类似飞书或微信的会话布局，左侧为班级会话列表，中间为消息流和输入区，右侧或弹层为发布工具。
+    class_conversation: 一个当前活跃班级对应的一条教师可进入的会话。
+    conversation_list_item: 班级会话列表中的一项，展示班级名称、最后消息摘要和最后消息时间。
+    last_message_at: 某个班级群消息流中最新一条消息的创建时间；无消息班级该值为空。
+    student_reply: 班级学生在班级群消息流中发布的普通 TEXT 消息，不绑定某张学习计划卡片或视频卡片。
+    study_plan_share_card: 教师把已发布学习计划分享到班级聊天后形成的资源入口卡片，至少包含计划名称、词书名称、每日新词数、时间范围、截止时间、发布人和发布时间。
+    published_study_plan: 状态为 PUBLISHED 的正式学习计划，已经完成学习计划模块内的创建、配置和发布流程。
+    video_resource_card: 教师把已有视频资源分享到班级聊天后形成的资源入口卡片，至少包含视频标题、封面或占位图、时长或状态摘要、发布人和发布时间。
+    publish_composer: 教师在聊天页面底部或右侧使用的发布输入区，可以发布文字、选择已发布学习计划或选择已有视频资源。
+    resource_preview: 教师正式分享学习计划或视频资源前看到的卡片摘要。
+    chat_message_status: 教师本地可见的消息提交状态，包括 sending、sent、failed。
+    polling_refresh: 页面打开期间定时刷新当前班级消息和会话列表的轻量同步方式，第一版固定为 30 秒一次。
+
+  preconditions:
+    - 调用者已认证。
+    - 调用者角色必须是 TEACHER 或具备教师端班级管理权限的 ADMIN。
+    - 目标 classroomId 必须存在且未归档。
+    - 教师只能进入自己负责班级的教师端班级聊天会话；管理员是否可代入查看由权限策略决定。
+    - 分享学习计划前，学习计划必须已在学习计划模块创建并发布。
+    - 分享学习计划前，目标班级必须属于该学习计划覆盖的班级范围。
+    - 分享视频资源前，视频必须已存在，教师必须拥有该视频的分享权限，且视频处于学生可观看状态。
+
+  rules:
+    - id: RULE-001
+      description: 教师端班级聊天页面必须作为管理后台一级导航入口提供。
+      invariant: admin_navigation contains teacher_class_chat_page
+
+    - id: RULE-002
+      description: 教师端班级聊天页面必须采用会话式三段布局，在桌面端优先展示班级列表、消息流和发布工具入口。
+      invariant: desktop_teacher_class_chat_page contains class_conversation_list and message_timeline and publish_composer
+
+    - id: RULE-003
+      description: 窄屏或移动宽度下页面必须保持飞书或微信式会话体验，班级列表和发布工具可折叠为抽屉或独立视图。
+      invariant: narrow_view keeps one primary conversation visible and moves secondary_panels to drawer_or_route
+
+    - id: RULE-004
+      description: 教师只能在班级会话列表中看到自己可管理的当前活跃班级。
+      invariant: visible_class_conversations = classrooms where teacher_manage_allowed and classroom.status = ACTIVE
+
+    - id: RULE-005
+      description: 班级会话列表必须按最后一条消息时间倒序展示；无消息班级必须排在有消息班级之后。
+      invariant: class_conversations ordered_by last_message_at desc nulls_last
+
+    - id: RULE-006
+      description: 会话列表项必须展示班级名称、最后消息摘要和最后消息时间，不展示未读数、红点或已读状态。
+      invariant: conversation_list_item contains classroom_name and last_message_summary and last_message_at and excludes unread_state
+
+    - id: RULE-007
+      description: 页面初次进入时，必须默认选中最近有消息的班级；如果所有班级都没有消息，则选中列表中的第一个班级。
+      formula: default_selected_classroom = first(class_conversations ordered_by last_message_at desc nulls_last)
+
+    - id: RULE-008
+      description: 当前班级会话区必须展示教师消息、学生普通文字回复、学习计划分享卡片和视频资源卡片，并能区分发送者身份。
+      invariant: message_timeline renders message_type and sender_role for every visible_message
+
+    - id: RULE-009
+      description: 学生回复必须作为普通 TEXT 消息展示，不形成学习计划卡片或视频卡片下的评论线程。
+      invariant: student_reply.message_type = TEXT and student_reply.parent_message_id is null
+
+    - id: RULE-010
+      description: 教师可以从发布输入区发布普通文字消息，成功后消息进入当前班级会话。
+      invariant: text_publish_allowed iff actor is classroom_teacher
+
+    - id: RULE-011
+      description: 教师只能分享已发布学习计划到班级聊天，不得在聊天页创建、编辑、配置或自动发布学习计划。
+      invariant: study_plan_share_allowed requires study_plan.status = PUBLISHED and chat_page_does_not_mutate_study_plan_configuration
+
+    - id: RULE-012
+      description: 教师分享学习计划时，目标班级必须属于该学习计划覆盖的班级范围。
+      invariant: study_plan_share_allowed requires classroom_id in study_plan.classroom_ids
+
+    - id: RULE-013
+      description: 同一个已发布学习计划在同一个班级聊天中只能分享一次。
+      invariant: unique(classroom_id, study_plan_id, message_type = STUDY_PLAN)
+
+    - id: RULE-014
+      description: 教师可以分享已有视频资源卡片，分享前必须校验视频可分享且当前学生可观看。
+      invariant: video_resource_card_publish_allowed iff teacher_can_share_video and video.status = READY and video.publish_status = PUBLISHED
+
+    - id: RULE-015
+      description: 学习计划和视频资源分享只在班级聊天中创建消息入口，不因聊天消息本身授予新的学习计划或视频访问权限。
+      invariant: chat_resource_card_created does_not_change resource_access_grants
+
+    - id: RULE-016
+      description: 教师分享学习计划或视频资源前必须看到资源摘要预览，避免误发到错误班级或分享错误内容。
+      invariant: resource_publish_requires preview_confirmed before message_created
+
+    - id: RULE-017
+      description: 消息发布失败时，页面必须保留教师输入内容并提供重试或取消入口。
+      invariant: failed_publish preserves_draft and exposes retry_or_cancel
+
+    - id: RULE-018
+      description: 当前班级没有学生回复或历史消息时，页面必须展示可操作空状态，而不是空白消息区。
+      invariant: empty_message_timeline renders actionable_empty_state
+
+    - id: RULE-019
+      description: 页面打开期间必须每 30 秒刷新当前班级消息和会话列表；页面隐藏、离开或组件卸载时必须停止轮询。
+      invariant: polling_refresh.interval_seconds = 30 and polling_stops_when page_hidden_or_unmounted
+
+    - id: RULE-020
+      description: 发送文字消息、分享学习计划或分享视频成功后，页面必须立即刷新当前班级消息和会话列表。
+      invariant: successful_publish triggers immediate_refresh of current_messages and conversation_list
+
+  scenarios:
+    - id: SCN-001
+      name: 教师从一级导航打开班级聊天页面
+      given:
+        - teacherId = 7 已认证
+        - teacherId = 7 负责 classroomId = 100
+        - classroomId = 100 是 active_classroom
+      when:
+        - teacherId = 7 从管理后台一级导航进入班级聊天页面
+      then:
+        - 页面展示 teacherId = 7 可管理的班级会话列表
+        - 默认选中最近有消息的班级；如果没有有消息班级，则选中列表中的第一个班级
+        - 页面提供文字、已发布学习计划和已有视频资源分享入口
+
+    - id: SCN-002
+      name: 班级会话列表按最后消息排序
+      given:
+        - teacherId = 7 负责 classroomId = 100 和 classroomId = 101
+        - classroomId = 100 的 lastMessageAt = "2026-06-28T09:00:00"
+        - classroomId = 101 的 lastMessageAt = "2026-06-28T10:00:00"
+      when:
+        - teacherId = 7 打开班级聊天页面
+      then:
+        - classroomId = 101 排在 classroomId = 100 前
+        - 会话项展示班级名、最后消息摘要和最后消息时间
+        - 会话项不展示未读数或红点
+
+    - id: SCN-003
+      name: 教师查看学生普通回复
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - studentId = 20 是 classroomId = 100 的当前学生
+        - studentId = 20 已在班级群消息流中发布 TEXT 回复
+      when:
+        - teacherId = 7 查看 classroomId = 100 的聊天消息
+      then:
+        - 页面展示 studentId = 20 的回复
+        - 回复气泡或消息行标识发送者为学生
+        - 回复不挂载到学习计划卡片或视频卡片下
+
+    - id: SCN-004
+      name: 教师分享已发布学习计划
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - studyPlanId = 55 属于 teacherId = 7
+        - studyPlanId = 55.status = PUBLISHED
+        - classroomId = 100 属于 studyPlanId = 55 覆盖的班级范围
+        - classroomId = 100 尚未分享过 studyPlanId = 55
+      when:
+        - teacherId = 7 在发布输入区选择 studyPlanId = 55 并确认分享
+      then:
+        - 页面创建 study_plan_share_card
+        - 卡片展示学习计划名称、词书名称、每日新词数、时间范围和截止时间摘要
+        - classroomId = 100 的学生可在班级聊天中看到该学习计划入口
+
+    - id: SCN-005
+      name: 教师不能分享未发布学习计划
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - studyPlanId = 56 属于 teacherId = 7
+        - studyPlanId = 56.status = DRAFT
+      when:
+        - teacherId = 7 尝试分享 studyPlanId = 56
+      then:
+        - 页面阻止提交或接口返回业务错误
+        - 不创建 study_plan_share_card
+        - 页面提示教师先在学习计划模块发布该学习计划
+
+    - id: SCN-006
+      name: 教师不能重复分享同一学习计划到同一班级
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - studyPlanId = 55.status = PUBLISHED
+        - classroomId = 100 已存在 studyPlanId = 55 的 study_plan_share_card
+      when:
+        - teacherId = 7 再次尝试向 classroomId = 100 分享 studyPlanId = 55
+      then:
+        - 分享被拒绝
+        - 不创建第二条 study_plan_share_card
+        - 页面提示该学习计划已分享到本班级
+
+    - id: SCN-007
+      name: 教师发布视频资源
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - videoId = 30 是 teacherId = 7 可分享的视频
+        - videoId = 30.status = READY
+        - videoId = 30.publishStatus = PUBLISHED
+      when:
+        - teacherId = 7 在发布输入区选择该视频并确认分享
+      then:
+        - 页面创建 video_resource_card
+        - 卡片展示视频标题和资源摘要
+        - classroomId = 100 的学生可从班级聊天中打开视频入口，并在打开时再次按当前资源权限校验
+
+    - id: SCN-008
+      name: 发布失败后教师可以重试
+      given:
+        - teacherId = 7 正在 classroomId = 100 的聊天页面发布文字消息
+        - 网络请求提交失败
+      when:
+        - 页面收到失败结果
+      then:
+        - 页面保留原消息内容
+        - 消息状态显示为 failed
+        - 教师可以选择重试或取消
+
+    - id: SCN-009
+      name: 窄屏下保持单会话优先
+      given:
+        - teacherId = 7 使用窄屏设备打开教师端班级聊天页面
+      when:
+        - 页面渲染 classroomId = 100 的聊天视图
+      then:
+        - 当前班级消息流优先占据主视图
+        - 班级列表可通过返回、抽屉或切换入口打开
+        - 已发布学习计划和已有视频资源分享入口仍可被教师触达
+
+    - id: SCN-010
+      name: 页面轮询刷新当前班级消息
+      given:
+        - teacherId = 7 正在查看 classroomId = 100 的聊天页面
+        - 页面处于可见状态
+      when:
+        - 距离上次刷新已达到 30 秒
+      then:
+        - 页面重新拉取 classroomId = 100 的消息列表
+        - 页面重新拉取班级会话列表
+        - 不使用 WebSocket 或 SSE
+
+  acceptance_criteria:
+    - id: AC-001
+      text: 管理后台必须提供一级导航入口进入教师端班级聊天页面。
+      verifies:
+        - RULE-001
+
+    - id: AC-002
+      text: 教师端班级聊天页面必须在桌面端呈现班级会话列表、当前班级消息流和发布输入区，并在窄屏下保持单会话优先的聊天体验。
+      verifies:
+        - RULE-002
+        - RULE-003
+
+    - id: AC-003
+      text: 教师只能看到自己可管理的当前活跃班级会话；会话列表必须按最后消息时间倒序展示，且不展示未读状态。
+      verifies:
+        - RULE-004
+        - RULE-005
+        - RULE-006
+        - RULE-007
+
+    - id: AC-004
+      text: 当前班级消息流必须正确区分教师消息、学生普通文字回复、学习计划分享卡片和视频资源卡片。
+      verifies:
+        - RULE-008
+        - RULE-009
+
+    - id: AC-005
+      text: 教师必须可以从页面发布普通文字消息，并且学生回复必须作为普通 TEXT 消息展示，不形成资源卡片下的评论线程。
+      verifies:
+        - RULE-009
+        - RULE-010
+
+    - id: AC-006
+      text: 教师只能分享已发布且覆盖当前班级的学习计划，且同一个学习计划在同一个班级聊天中只能分享一次。
+      verifies:
+        - RULE-011
+        - RULE-012
+        - RULE-013
+
+    - id: AC-007
+      text: 教师只能分享已有且学生可观看的视频资源，聊天页不得支持视频上传、外链解析、转码或视频信息编辑。
+      verifies:
+        - RULE-014
+
+    - id: AC-008
+      text: 学习计划和视频资源分享前必须有摘要预览，分享后不得绕过资源自身权限控制。
+      verifies:
+        - RULE-015
+        - RULE-016
+
+    - id: AC-009
+      text: 页面必须处理消息空状态和发布失败状态，失败时保留教师输入并提供重试或取消入口。
+      verifies:
+        - RULE-017
+        - RULE-018
+
+    - id: AC-010
+      text: 页面打开期间必须每 30 秒刷新当前班级消息和会话列表，发布成功后必须立即刷新，且第一版不得依赖 WebSocket 或 SSE。
+      verifies:
+        - RULE-019
+        - RULE-020
+
+  interfaces:
+    frontend:
+      - route: /admin/classrooms/chat
+        description: 管理后台一级导航中的教师端班级聊天页面入口，面向 TEACHER 和具备班级管理权限的 ADMIN。
+      - component_hint: TeacherClassChatPage
+      - component_hint: ClassConversationList
+      - component_hint: ClassMessageTimeline
+      - component_hint: TeacherPublishComposer
+      - component_hint: StudyPlanShareCard
+      - component_hint: VideoResourceCard
+    apis:
+      - method: GET
+        path: /api/classroom-conversations
+        request_schema: ClassroomConversationQuery
+        response_schema: Page<ClassroomConversationResponse>
+      - method: GET
+        path: /api/classrooms/{classroomId}/group-feed/messages
+        request_schema: ClassroomGroupFeedMessageQuery
+        response_schema: Page<ClassroomGroupFeedMessageResponse>
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/messages
+        request_schema: CreateClassroomGroupFeedTextMessageRequest
+        response_schema: ClassroomGroupFeedMessageResponse
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/study-plans
+        request_schema: ShareClassroomGroupFeedStudyPlanRequest
+        response_schema: ClassroomGroupFeedMessageResponse
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/videos
+        request_schema: ShareClassroomGroupFeedVideoRequest
+        response_schema: ClassroomGroupFeedMessageResponse
+
+  trace:
+    related_requirements:
+      - REQ-ORG-0001
+      - REQ-ORG-0004
+      - REQ-STUDY-0001
+      - REQ-STUDY-0002
+    expected_code:
+      - frontend: frontend/admin/src/pages/teacher-class-chat-page.tsx
+      - frontend: frontend/admin/src/components/TeacherPublishComposer.tsx
+      - frontend: frontend/admin/src/components/ClassConversationList.tsx
+      - frontend: frontend/admin/src/components/ClassMessageTimeline.tsx
+      - backend: ClassroomGroupFeedController
+      - backend: ClassroomGroupFeedService
+      - backend: StudyPlanService
+      - backend: VideoAssetService
+      - model: ClassroomGroupFeedMessageType.STUDY_PLAN
+    expected_tests:
+      - frontend/admin/src/pages/teacher-class-chat-page.test.tsx
+      - frontend/admin/src/components/teacher-publish-composer.test.tsx
+      - src/test/java/com/example/words/service/ClassroomGroupFeedServiceTest.java
+      - src/test/java/com/example/words/controller/ClassroomGroupFeedControllerTest.java
+      - src/test/java/com/example/words/service/StudyPlanServiceTest.java
+
+  risk:
+    level: medium
+    reasons:
+      - 页面横跨班级权限、消息流、已发布学习计划和视频资源分享。
+      - 学习计划分享必须严格复用既有学习计划发布和班级范围规则，避免聊天入口绕过学习计划权限。
+      - 会话列表排序和轮询刷新会引入新的班级消息聚合查询。
+      - 聊天式布局对桌面和窄屏响应式体验要求较高。
+
+  non_functional:
+    performance:
+      - 初次进入页面时，班级会话列表和首屏消息应能分页加载，避免一次性拉取所有历史消息。
+      - 30 秒轮询刷新不得重复拉取非当前班级的完整消息历史。
+      - 消息流分页加载和轮询刷新时不得造成输入区明显卡顿。
+    reliability:
+      - 发布请求失败时必须可重试，且不得重复创建已成功提交的消息。
+      - 页面刷新后必须能从服务端状态恢复已发布消息。
+      - 轮询请求失败时不得清空当前已展示消息，应保留页面可读状态并提示刷新失败。
+    security:
+      - 所有消息查询和发布接口必须执行当前用户、班级和资源权限校验。
+      - 学习计划分享不得绕过学习计划已发布状态、教师归属和班级范围校验。
+      - 视频资源卡片不得暴露未授权播放地址。
+    usability:
+      - 页面视觉结构应接近主流会话工具，消息阅读、切班、发布三类操作必须可快速触达。
+      - 教师分享学习计划或视频资源前必须能确认发布目标班级。
+      - 无可管理班级时必须展示空状态，并提示教师创建班级或联系管理员。
+
+  open_questions:
+    - 管理员是否可以代入教师身份查看或发送班级聊天消息，需要与后台权限策略统一。
+    - 学习计划分享卡片点击后，教师端和学生端分别跳转到哪个具体页面或路由。
+    - 会话列表的最后消息摘要是否需要对学习计划和视频卡片使用固定模板文案。

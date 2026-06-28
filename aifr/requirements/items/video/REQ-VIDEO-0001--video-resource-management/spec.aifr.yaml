@@ -1,0 +1,597 @@
+aifr_spec:
+  schema_version: "1.0.0"
+  id: REQ-VIDEO-0001
+  version: "2.0.0"
+  title: 教学视频资源管理、云端状态同步与班级群播放授权
+  type: functional
+  status: draft
+  priority: high
+
+  identity:
+    primary_domain: VIDEO
+    domain_path: video
+    frozen_slug: video-resource-management
+    canonical_path: aifr/requirements/items/video/REQ-VIDEO-0001--video-resource-management/spec.aifr.yaml
+    naming_standard_version: "1.0.0"
+    related_domains:
+      - AUTH
+      - ORG
+
+  lifecycle:
+    created_at: "2026-06-28"
+    updated_at: "2026-06-29"
+    owner: backend
+    reviewers:
+      - backend
+      - frontend
+      - qa
+      - product
+
+  versioning:
+    change_type: major
+    previous_version: "1.1.0"
+    supersedes:
+      - REQ-VIDEO-0001@1.1.0
+    superseded_by: null
+    breaking_change: true
+    change_summary: 将本地发布状态改为火山云发布状态镜像，移除管理员人工确认发布语义，限制新增视频能力只使用火山云 VOD，并明确老师私有视频、系统公共素材、班级群播放授权和学生端无全局视频库的边界。
+
+  revision_history:
+    - version: "1.0.0"
+      change_type: initial
+      summary: 初始 AIFR 版本，整合既有视频发布播放设计、火山云同步能力和老师可分享公共素材库规则。
+    - version: "1.1.0"
+      change_type: minor
+      summary: 新增公共教学视频、班级群视频入口和学生视频播放授权的精确定义。
+    - version: "2.0.0"
+      change_type: major
+      summary: 确认不需要管理员人工确认发布；发布状态统一为火山云云端发布状态镜像，传播范围由 scopeType 控制，学生只通过班级群入口播放。
+
+  intent:
+    user_goal: 管理员可以把火山云空间中的教学视频同步到系统，老师和管理员上传视频后自动请求云端发布；老师可以快速使用系统公共素材或自己的教师视频分享到班级群，当前班级学生可从班级群视频入口播放。
+    business_value: 减少管理员人工确认和重复上传成本，让火山云集中媒资和老师自有视频都能快速进入教学流程，同时用 scopeType 和班级群入口控制传播范围，避免产生学生全局视频库。
+
+  scope:
+    in:
+      - 管理员和老师通过后台上传教学视频，视频文件只存储在云端，本地只保存媒资元数据、播放地址和状态镜像。
+      - 新增和默认启用的视频存储配置仅支持火山云 VOD；腾讯云 VOD 代码可保留为 deprecated legacy 实现，但入口必须阻断。
+      - 上传时按默认启用的火山云 VOD 配置调用火山云适配器。
+      - 火山云上传必须使用符合 VOD 要求的文件扩展名格式。
+      - 管理员和老师上传成功后必须自动请求火山云媒资发布。
+      - 管理员从默认启用火山云空间同步媒资列表。
+      - 云端同步时按 cloud_media_id 幂等新增或更新本地视频记录。
+      - 本地 cloudPublishStatus 是火山云发布状态的本地镜像，不是系统内人工确认状态，也不是视频文件镜像。
+      - 云端同步必须用火山云当前发布状态刷新本地 cloudPublishStatus。
+      - 管理员可以对全部视频执行云端发布、云端下架、同步和删除。
+      - 老师可以对自己拥有的 TEACHER 视频执行云端发布、云端下架、同步和删除。
+      - 老师不得对 SYSTEM 视频或其他老师的 TEACHER 视频执行云端下架、同步、删除或管理操作。
+      - 老师可以看到自己管理的 TEACHER 视频，以及已云端发布、已就绪且有播放地址的 SYSTEM 公共素材。
+      - 老师可以把可分享视频分享到自己负责的班级群；可分享视频包括可播的 SYSTEM 公共素材和该老师自己的可播 TEACHER 视频。
+      - 当前班级学生可以通过班级群视频入口播放当前仍可播的视频。
+      - 学生不能因为存在 SYSTEM 公共素材或云端已发布视频而直接浏览整个视频库。
+      - 班级群视频入口只授予该班当前学生从该入口播放该视频的许可，不授予视频管理权或全局视频库访问权。
+    out:
+      - 浏览器直传云厂商。
+      - 视频审核工作流。
+      - 管理员人工确认发布步骤。
+      - 视频授权给单个老师或多个老师的独立授权表。
+      - 学生端公共视频库。
+      - 学生端 /api/students/me/videos/page 全局视频列表。
+      - 老师批量认领云端视频。
+      - 非管理员删除公共云端素材。
+      - 云厂商事件回调消费。
+      - 自动定时同步云端发布状态。
+      - 每次学生播放都实时查询云端状态。
+      - 播放签名、防盗链和短时播放 Token。
+      - 独立视频审计日志。
+      - 自动删除云端列表中不存在的本地视频记录。
+      - 重命名历史 tencent_file_id 数据库字段。
+
+  actors:
+    primary:
+      - admin
+      - teacher
+      - student
+    secondary:
+      - volcengine_vod
+      - video_storage_gateway
+      - classroom_group_feed
+      - access_control_service
+
+  domain_terms:
+    cloud_media_id: 云厂商返回的媒资 ID；火山云为 Vid，当前本地仍可存入历史字段 tencent_file_id。
+    video_asset: 系统本地保存的视频资源索引，包含标题、云端媒资 ID、播放地址、封面、时长、处理状态、云端发布状态镜像、上传人、归属人与范围。
+    video_file_storage: 视频文件本体只存储在火山云 VOD，本地不保存视频文件。
+    video_status: 本系统对播放元数据是否可用的状态，取值为 PROCESSING、READY、FAILED；READY 需要可用播放地址。
+    cloud_publish_status: 火山云媒资发布状态的本地镜像，取值为 UNPUBLISHED、PUBLISHED；该状态不是视频文件镜像，也不是管理员人工确认结果。
+    public_system_video: scopeType = SYSTEM 且 cloudPublishStatus = PUBLISHED 且 status = READY 且 mediaUrl 非空的视频，所有老师可见、可预览、可分享到自己负责的班级群。
+    teacher_owned_video: scopeType = TEACHER 且 ownerUserId 为当前老师的视频，仅该老师可管理、预览和分享到自己负责的班级群。
+    cloud_publish_action: 系统调用火山云 VOD 将 Vid 设为 Published 的动作，成功后更新本地 cloudPublishStatus 镜像。
+    cloud_unpublish_action: 系统调用火山云 VOD 将 Vid 设为 Unpublished 的动作，成功后更新本地 cloudPublishStatus 镜像。
+    cloud_sync: 管理员从默认启用火山云空间拉取云端媒资列表，并把云端元数据和发布状态镜像幂等写入本地 video_assets 的操作。
+    classroom_video_entry: 班级负责老师或管理员把可分享视频发布到班级群消息流后形成的视频学习入口，当前班级学生可以通过该入口播放视频。
+    student_video_play_grant: 学生播放教学视频的业务许可，只来自当前班级群视频入口和当前班级成员身份。
+    shareable_video: 对当前老师可见且可播的视频；包括 public_system_video 和该老师自己的可播 teacher_owned_video。
+    legacy_tencent_vod: 已废弃的腾讯云 VOD 实现代码，可保留并标注 deprecated，但新增配置和视频操作入口必须阻断。
+
+  preconditions:
+    - 调用者已认证。
+    - 视频管理接口调用者必须是 ADMIN 或 TEACHER。
+    - 云端同步接口调用者必须是 ADMIN。
+    - 上传视频必须提供受支持的视频文件扩展名。
+    - 上传和云端同步必须存在默认启用的火山云 VOD 配置。
+    - 老师分享到班级群前，老师必须是目标班级负责老师。
+    - 学生从班级群入口播放前，学生必须是目标班级当前成员。
+
+  rules:
+    - id: RULE-001
+      description: 新增、更新、设为默认和测试视频存储配置时，系统必须只允许 VOLCENGINE_VOD；TENCENT_VOD 入口必须被阻断。
+      invariant: new_or_default_video_storage_provider = VOLCENGINE_VOD
+
+    - id: RULE-002
+      description: 火山云 VOD 上传时传给云端的文件扩展名必须使用带点格式，例如 .mp4。
+      invariant: volcengine_upload_file_extension starts_with "."
+
+    - id: RULE-003
+      description: 管理员和老师上传视频成功并取得 Vid 后，系统必须自动请求火山云云端发布。
+      invariant: upload_success implies cloud_publish_requested_for Vid
+
+    - id: RULE-004
+      description: 本地不得保存视频文件本体，只能保存云端媒资 ID、播放 URL、封面、时长、状态镜像和管理元数据。
+      invariant: local_storage excludes video_binary_file
+
+    - id: RULE-005
+      description: cloudPublishStatus 必须表示火山云发布状态的本地镜像，而不是系统内人工确认状态。
+      invariant: local.cloudPublishStatus mirrors volcengine.publishStatus
+
+    - id: RULE-006
+      description: 管理员可以从默认启用火山云空间分页拉取媒资列表，并按 cloud_media_id 幂等同步到本地视频资源。
+      invariant: cloud_sync_upsert_key = cloud_media_id
+
+    - id: RULE-007
+      description: 云端同步创建的新视频必须归入 SYSTEM 素材，上传人和管理归属记录为执行同步的管理员，并同步云端当前 cloudPublishStatus。
+      invariant: cloud_sync_created_video.scope_type = SYSTEM and cloudPublishStatus = cloud.publishStatus
+
+    - id: RULE-008
+      description: 云端同步更新已有视频时，必须刷新标题、简介、原文件名、类型、大小、播放地址、封面、时长、状态、存储配置和 cloudPublishStatus。
+      invariant: cloud_sync_existing_video refreshes metadata_and_cloud_publish_status
+
+    - id: RULE-009
+      description: cloudPublishStatus 与 video_status 必须分开表达；云端 PUBLISHED 但缺少可用播放地址时，视频仍为 PROCESSING 或 FAILED，不能视为可播。
+      invariant: playable_video iff cloudPublishStatus = PUBLISHED and status = READY and mediaUrl is not null
+
+    - id: RULE-010
+      description: 管理员可以查看和管理全部视频。
+      invariant: admin_can_manage_video = true
+
+    - id: RULE-011
+      description: 老师可以管理自己上传或归属自己的 TEACHER 视频，但不得管理 SYSTEM 视频或其他老师的 TEACHER 视频。
+      invariant: teacher_can_manage_video iff video.scope_type = TEACHER and video.owner_user_id = teacher.id
+
+    - id: RULE-012
+      description: 老师可以看到自己管理的 TEACHER 视频，以及所有可播的 SYSTEM 公共素材。
+      invariant: teacher_visible_video iff teacher_can_manage_video or public_system_video
+
+    - id: RULE-013
+      description: 老师可以把可分享视频分享到自己负责的班级群；可分享视频包括可播的 SYSTEM 公共素材和该老师自己的可播 TEACHER 视频。
+      invariant: teacher_can_share_video iff teacher_is_classroom_teacher and playable_video and (video.scope_type = SYSTEM or video.owner_user_id = teacher.id)
+
+    - id: RULE-014
+      description: 分享视频到班级群时，后端必须重新校验视频对调用老师或管理员可分享，不能只依赖前端候选列表或视频 ID。
+      invariant: share_video_request requires server_side_share_permission_check
+
+    - id: RULE-015
+      description: 当前班级学生可以通过该班的班级群视频入口播放当前仍可播的视频。
+      invariant: student_can_play_from_classroom_video_entry iff student_is_current_classroom_member and classroom_video_entry exists and playable_video
+
+    - id: RULE-016
+      description: 学生播放班级群视频时不追溯分享老师当前权限，只校验当前班级成员身份、历史分享入口存在和视频当前可播。
+      invariant: student_playback_does_not_require_current_author_share_permission
+
+    - id: RULE-017
+      description: SYSTEM 公共素材或云端 PUBLISHED 视频不得自动形成学生公共视频库；学生不能仅因为视频可播就直接浏览或播放。
+      invariant: playable_video does_not_imply student_global_video_library_access
+
+    - id: RULE-018
+      description: 班级群视频入口只授予当前班级学生从该入口播放该视频的许可，不授予视频管理权、视频库浏览权或离班后的继续播放权。
+      invariant: classroom_video_entry_grant_scope = current_classroom_members_only and no_video_management_permission
+
+    - id: RULE-019
+      description: 云端下架必须调用火山云将 Vid 设为 Unpublished；云端调用失败时不得只修改本地 cloudPublishStatus。
+      invariant: cloud_unpublish_success required_before local cloudPublishStatus = UNPUBLISHED
+
+    - id: RULE-020
+      description: 历史班级群视频消息必须保留；视频云端下架或不可播后，历史入口不得继续返回播放地址。
+      invariant: historical_classroom_video_message persists and playable_video = false implies playback_denied
+
+    - id: RULE-021
+      description: 系统不保证实时感知云控制台外部变更；外部变更必须通过手动单条同步或云端空间同步刷新本地状态镜像。
+      invariant: external_cloud_console_change visible_after explicit_sync
+
+    - id: RULE-022
+      description: 单条同步发现云端媒资不存在时，必须标记视频 FAILED、cloudPublishStatus = UNPUBLISHED、清空 mediaUrl，并保留本地记录和历史班级群消息引用。
+      invariant: cloud_media_missing implies status = FAILED and cloudPublishStatus = UNPUBLISHED and mediaUrl = null
+
+    - id: RULE-023
+      description: 后台预览和学生播放必须只返回可播放视频地址，不应向学生暴露存储配置或云端密钥。
+      invariant: student_video_response excludes storage_config_secret_fields
+
+  scenarios:
+    - id: SCN-001
+      name: 老师上传教师视频后自动云端发布但不进入全体老师素材库
+      given:
+        - actor.role = TEACHER
+        - actor.id = 7
+        - 默认启用配置 providerType = VOLCENGINE_VOD
+        - originalFileName = lesson.mp4
+      when:
+        - 老师调用 POST /api/videos/upload
+      then:
+        - 系统上传视频到火山云
+        - 系统请求云端发布返回的 Vid
+        - video_asset.scope_type = TEACHER
+        - video_asset.ownerUserId = 7
+        - video_asset.cloudPublishStatus = 火山云当前发布状态
+        - 其他老师不能在视频资源列表看到该视频
+
+    - id: SCN-002
+      name: 管理员上传系统视频后自动进入公共素材条件
+      given:
+        - actor.role = ADMIN
+        - 默认启用配置 providerType = VOLCENGINE_VOD
+      when:
+        - 管理员上传视频且火山云返回 Published 与可用播放地址
+      then:
+        - video_asset.scope_type = SYSTEM
+        - video_asset.cloudPublishStatus = PUBLISHED
+        - video_asset.status = READY
+        - 全体老师可以在视频资源中看到并预览该视频
+
+    - id: SCN-003
+      name: 管理员同步火山云新视频
+      given:
+        - actor.role = ADMIN
+        - 默认启用配置 providerType = VOLCENGINE_VOD
+        - 火山云空间存在 Vid = v001 且本地不存在对应 video_asset
+        - 火山云返回 v001 publishStatus = Published
+      when:
+        - 管理员调用 POST /api/videos/sync/cloud
+      then:
+        - 系统创建一条本地 video_asset
+        - video_asset.tencent_file_id = v001
+        - video_asset.scope_type = SYSTEM
+        - video_asset.cloudPublishStatus = PUBLISHED
+        - 响应统计 imported 增加 1
+
+    - id: SCN-004
+      name: 管理员同步火山云已有视频
+      given:
+        - actor.role = ADMIN
+        - 本地已存在 tencent_file_id = v001 的 video_asset
+        - 火山云返回 v001 的新标题、封面、播放地址和 publishStatus = Unpublished
+      when:
+        - 管理员调用 POST /api/videos/sync/cloud
+      then:
+        - 系统更新本地视频云端信息
+        - 系统将 video_asset.cloudPublishStatus 更新为 UNPUBLISHED
+        - 响应统计 updated 增加 1
+
+    - id: SCN-005
+      name: 老师不能执行云端空间同步
+      given:
+        - actor.role = TEACHER
+      when:
+        - 老师调用 POST /api/videos/sync/cloud
+      then:
+        - 系统拒绝访问
+        - 不创建或更新本地视频资源
+
+    - id: SCN-006
+      name: 管理员云端下架系统视频后历史班级入口不可播放
+      given:
+        - videoId = 30 scopeType = SYSTEM
+        - videoId = 30 cloudPublishStatus = PUBLISHED
+        - videoId = 30 status = READY
+        - classroomId = 100 的班级群中已有 videoId = 30 的分享消息
+      when:
+        - 管理员调用 POST /api/videos/30/unpublish
+      then:
+        - 系统调用火山云将 Vid 设为 Unpublished
+        - videoId = 30 cloudPublishStatus = UNPUBLISHED
+        - 班级群历史消息保留
+        - 学生从历史入口请求播放 videoId = 30 时被拒绝
+
+    - id: SCN-007
+      name: 老师分享自己的教师视频到自己班级群
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - videoId = 40 scopeType = TEACHER
+        - videoId = 40 ownerUserId = 7
+        - videoId = 40 cloudPublishStatus = PUBLISHED
+        - videoId = 40 status = READY
+      when:
+        - teacherId = 7 调用 POST /api/classrooms/100/group-feed/videos 分享 videoId = 40
+      then:
+        - 系统创建 video_share_message
+        - 班级群消息包含 videoId = 40 的入口和摘要
+        - 不改变 videoId = 40 的 ownerUserId、scopeType 或 cloudPublishStatus
+
+    - id: SCN-008
+      name: 老师不能通过猜 ID 分享其他老师的视频
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - videoId = 41 scopeType = TEACHER
+        - videoId = 41 ownerUserId = 8
+        - videoId = 41 cloudPublishStatus = PUBLISHED
+        - videoId = 41 status = READY
+      when:
+        - teacherId = 7 调用 POST /api/classrooms/100/group-feed/videos 分享 videoId = 41
+      then:
+        - 系统拒绝访问
+        - 不创建班级群消息
+
+    - id: SCN-009
+      name: 当前班级学生通过班级群视频入口播放可播视频
+      given:
+        - studentId = 20 是 classroomId = 100 当前成员
+        - classroomId = 100 的班级群中已有 videoId = 30 的分享消息
+        - videoId = 30 cloudPublishStatus = PUBLISHED
+        - videoId = 30 status = READY
+        - videoId = 30 mediaUrl 非空
+      when:
+        - studentId = 20 从班级群消息入口请求播放 videoId = 30
+      then:
+        - 系统返回视频播放地址
+        - 不向学生授予视频管理权或视频库浏览权
+
+    - id: SCN-010
+      name: 学生不能通过全局视频库浏览公共素材
+      given:
+        - studentId = 20 是已认证学生
+        - videoId = 30 scopeType = SYSTEM
+        - videoId = 30 cloudPublishStatus = PUBLISHED
+        - videoId = 30 status = READY
+      when:
+        - studentId = 20 请求学生端全局视频列表或直接按视频 ID 播放
+      then:
+        - 系统不提供学生全局视频列表入口
+        - 系统不因视频是 SYSTEM 公共素材而授予直接播放权限
+
+    - id: SCN-011
+      name: 云端 Published 但没有播放地址时不可分享
+      given:
+        - videoId = 50 cloudPublishStatus = PUBLISHED
+        - videoId = 50 status = PROCESSING
+        - videoId = 50 mediaUrl = null
+      when:
+        - 老师尝试分享 videoId = 50 到班级群
+      then:
+        - 系统拒绝分享
+        - 前端不应把该视频列为可分享视频
+
+    - id: SCN-012
+      name: 火山云上传使用带点扩展名
+      given:
+        - originalFileName = liuxiaoyan.mp4
+      when:
+        - 系统通过火山云 VOD 适配器上传视频
+      then:
+        - ApplyUploadInfo 使用 fileExtension = .mp4
+        - 上传成功后返回 Vid
+        - 系统请求云端发布该 Vid
+
+    - id: SCN-013
+      name: 单条同步发现云端媒资不存在
+      given:
+        - videoId = 60 本地存在
+        - videoId = 60 tencent_file_id = v_missing
+        - 火山云查询 v_missing 返回不存在
+      when:
+        - 管理员或归属老师调用 POST /api/videos/60/sync
+      then:
+        - videoId = 60 status = FAILED
+        - videoId = 60 cloudPublishStatus = UNPUBLISHED
+        - videoId = 60 mediaUrl = null
+        - videoId = 60 errorMessage 说明云端媒资不存在或已被删除
+        - 本地视频记录不删除
+
+  acceptance_criteria:
+    - id: AC-001
+      text: 新增、更新、默认、测试视频存储配置时必须阻断 TENCENT_VOD，只允许 VOLCENGINE_VOD。
+      verifies:
+        - RULE-001
+
+    - id: AC-002
+      text: 火山云上传必须使用带点文件扩展名，并在获得 Vid 后自动请求云端发布。
+      verifies:
+        - RULE-002
+        - RULE-003
+
+    - id: AC-003
+      text: 本地必须只保存视频元数据和状态镜像，不保存视频文件本体。
+      verifies:
+        - RULE-004
+
+    - id: AC-004
+      text: cloudPublishStatus 字段、API 参数和响应必须表达火山云发布状态镜像，并使用 PUBLISHED、UNPUBLISHED 枚举值。
+      verifies:
+        - RULE-005
+
+    - id: AC-005
+      text: 管理员点击云端同步后，系统必须分页扫描火山云空间，按 cloud_media_id upsert，并返回 scanned、imported、updated 统计。
+      verifies:
+        - RULE-006
+        - RULE-007
+        - RULE-008
+
+    - id: AC-006
+      text: 非管理员调用云端空间同步必须被拒绝。
+      verifies:
+        - RULE-006
+
+    - id: AC-007
+      text: 视频只有在 cloudPublishStatus=PUBLISHED、status=READY 且 mediaUrl 非空时才可分享或播放。
+      verifies:
+        - RULE-009
+
+    - id: AC-008
+      text: 老师只能看到自己的 TEACHER 视频和可播的 SYSTEM 公共素材。
+      verifies:
+        - RULE-011
+        - RULE-012
+
+    - id: AC-009
+      text: 老师可以把自己的可播 TEACHER 视频或可播 SYSTEM 公共素材分享到自己负责的班级群。
+      verifies:
+        - RULE-013
+        - RULE-014
+
+    - id: AC-010
+      text: 老师不得通过猜 ID 分享、同步、下架或删除其他老师的 TEACHER 视频或 SYSTEM 视频。
+      verifies:
+        - RULE-011
+        - RULE-014
+
+    - id: AC-011
+      text: 当前班级学生必须可以通过有效班级群视频入口播放当前可播视频，离班或视频不可播后不得继续播放。
+      verifies:
+        - RULE-015
+        - RULE-018
+        - RULE-020
+
+    - id: AC-012
+      text: 学生播放班级群历史视频入口时不追溯分享老师当前权限，只校验当前班级成员、入口存在和视频当前可播。
+      verifies:
+        - RULE-016
+
+    - id: AC-013
+      text: SYSTEM 公共素材不得自动形成学生公共视频库；学生端不得保留全局视频列表和按视频 ID 直接播放入口。
+      verifies:
+        - RULE-017
+
+    - id: AC-014
+      text: 云端下架必须真正调用火山云 Unpublished，成功后才更新本地 cloudPublishStatus。
+      verifies:
+        - RULE-019
+
+    - id: AC-015
+      text: 云控制台外部变更不要求实时感知，必须通过手动单条同步或云端空间同步更新本地状态镜像。
+      verifies:
+        - RULE-021
+
+    - id: AC-016
+      text: 单条同步发现云端媒资不存在时必须标记 FAILED、cloudPublishStatus=UNPUBLISHED、清空 mediaUrl，并保留本地记录。
+      verifies:
+        - RULE-022
+
+    - id: AC-017
+      text: 学生视频播放响应不得暴露视频存储配置密钥或云端管理字段。
+      verifies:
+        - RULE-023
+
+  interfaces:
+    apis:
+      - method: GET
+        path: /api/videos/page
+        request_schema: page, size, keyword, status, cloudPublishStatus, scopeType
+        response_schema: Page<VideoResponse with cloudPublishStatus>
+      - method: POST
+        path: /api/videos/upload
+        request_schema: multipart file, title, description
+        response_schema: VideoResponse with cloudPublishStatus
+      - method: POST
+        path: /api/videos/sync/cloud
+        request_schema: none
+        response_schema: VideoCloudSyncResponse
+      - method: POST
+        path: /api/videos/{id}/sync
+        request_schema: path id
+        response_schema: VideoResponse with cloudPublishStatus
+      - method: POST
+        path: /api/videos/{id}/publish
+        request_schema: path id
+        response_schema: VideoResponse with cloudPublishStatus
+      - method: POST
+        path: /api/videos/{id}/unpublish
+        request_schema: path id
+        response_schema: VideoResponse with cloudPublishStatus
+      - method: DELETE
+        path: /api/videos/{id}
+        request_schema: path id
+        response_schema: no_content
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/videos
+        request_schema: videoId
+        response_schema: ClassroomGroupFeedMessageResponse
+      - method: GET
+        path: /api/classrooms/{classroomId}/group-feed/videos/{videoId}/play
+        request_schema: classroomId, videoId
+        response_schema: VideoAccessResponse
+    deprecated_apis:
+      - method: GET
+        path: /api/students/me/videos/page
+        reason: 学生端不保留全局视频库；学生播放授权来自班级群视频入口。
+      - method: GET
+        path: /api/students/me/videos/{id}/play
+        reason: 学生不得按视频 ID 直接播放；必须通过班级群入口校验。
+
+  trace:
+    expected_code:
+      - service: VideoAssetService
+      - service: VideoStorageConfigService
+      - service: ClassroomGroupFeedService
+      - service: video/VideoStorageGateway
+      - service: video/VolcengineVodStorageGateway
+      - model: VideoCloudPublishStatus
+      - controller: VideoController
+      - controller: StudentController
+      - controller: ClassroomGroupFeedController
+      - frontend: frontend/admin/src/pages/videos-page.tsx
+      - frontend: frontend/admin/src/pages/video-storage-page.tsx
+      - frontend: frontend/admin/src/pages/classrooms-page.tsx
+      - frontend: frontend/admin/src/pages/teacher-class-chat-page.tsx
+      - frontend: frontend/src/student/StudentWorkspace.tsx
+      - legacy: TencentVodGateway
+      - legacy: TencentVodSdkGateway
+      - legacy: TencentVodStorageGateway
+    expected_tests:
+      - VideoAssetServiceTest
+      - VideoStorageConfigServiceTest
+      - ClassroomGroupFeedServiceTest
+      - VolcengineVodStorageGatewayTest
+      - VolcengineVodLiveUploadTest
+      - frontend/admin/src/pages/videos-page.test.tsx
+      - frontend/admin/src/pages/video-storage-page.test.tsx
+      - frontend/admin/src/pages/classrooms-page.test.tsx
+      - frontend/admin/src/pages/teacher-class-chat-page.test.tsx
+      - frontend/tests/student-class-tab.test.mjs
+
+  risk:
+    level: high
+    reasons:
+      - cloudPublishStatus 同时影响老师素材库、班级群分享和学生播放，必须避免再次混淆为本地人工确认状态。
+      - 视频文件只存储在云端，本地只保存元数据和状态镜像；实现和文案必须避免暗示本地存储视频文件。
+      - 云端同步会批量写入外部云空间媒资信息，需要幂等、状态同步和非管理员访问限制。
+      - 老师可分享自己的 TEACHER 视频和 SYSTEM 公共素材后，必须保证分享权限、学生播放授权和视频管理权限分离，避免猜 ID 分享或误下架公共云端素材。
+      - 停用播放必须真正调用火山云 Unpublished，否则历史班级群入口无法可靠失效。
+      - 禁用腾讯云入口但保留 legacy 代码，需要防止新配置或新视频操作继续走到腾讯云路径。
+
+  non_functional:
+    security:
+      - 云端同步只允许 ADMIN 执行。
+      - 老师分享权限不得授予删除、云端同步、云端下架或修改 SYSTEM 公共素材的权限。
+      - 老师不得通过猜 ID 分享其他老师的 TEACHER 视频。
+      - 班级群视频入口只应对当前班级学生成员生效，学生离班后不得继续使用该班入口播放。
+      - 学生响应不得暴露存储配置、密钥或云端管理字段。
+    reliability:
+      - 云端同步必须按 cloud_media_id 幂等处理重复媒资。
+      - 云端媒资缺少播放域名或播放地址时，本地视频应保持 PROCESSING 或 FAILED，并不可预览、不可分享、不可播放。
+      - 系统内云端发布和云端下架操作成功后必须立即刷新本地 cloudPublishStatus 镜像。
+      - 外部云控制台变更不保证实时感知，必须通过显式同步收敛。
+      - 云端媒资不存在时不得自动删除本地记录，必须标记失败并清空播放地址。
+    auditability:
+      - 本阶段至少保留 createdBy、ownerUserId、publishedAt、unpublishedAt 和 updatedAt，用于追踪本系统观察到的云端发布状态变化。
+      - publishedAt 和 unpublishedAt 表示本系统观察到状态变化的时间，不声明为云厂商真实操作时间。
+    performance:
+      - 云端同步应分页拉取云端媒资列表，单页大小不超过 100。
+      - 列表、筛选、班级群可分享候选和学生播放默认使用本地 cloudPublishStatus 状态镜像，不在每次学生播放时实时查询云端。

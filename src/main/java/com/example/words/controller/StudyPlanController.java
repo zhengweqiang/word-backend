@@ -1,5 +1,6 @@
 package com.example.words.controller;
 
+import com.example.words.dto.AppendStudyPlanStudentsRequest;
 import com.example.words.dto.CreateStudyPlanRequest;
 import com.example.words.dto.StudyPlanOverviewResponse;
 import com.example.words.dto.StudyPlanResponse;
@@ -52,6 +53,14 @@ public class StudyPlanController {
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public ResponseEntity<StudyPlanResponse> publishStudyPlan(@PathVariable Long id) {
         return ResponseEntity.ok(studyPlanService.publishStudyPlan(id, currentUserService.getCurrentUser()));
+    }
+
+    @PostMapping("/{id}/students")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public ResponseEntity<StudyPlanResponse> appendStudents(
+            @PathVariable Long id,
+            @Valid @RequestBody AppendStudyPlanStudentsRequest request) {
+        return ResponseEntity.ok(studyPlanService.appendStudents(id, request, currentUserService.getCurrentUser()));
     }
 
     @GetMapping("/{id}/overview")

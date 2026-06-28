@@ -61,8 +61,8 @@ public class VideoAsset {
     private VideoStatus status = VideoStatus.PROCESSING;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "publish_status", nullable = false, length = 20)
-    private VideoPublishStatus publishStatus = VideoPublishStatus.UNPUBLISHED;
+    @Column(name = "cloud_publish_status", nullable = false, length = 20)
+    private VideoCloudPublishStatus cloudPublishStatus = VideoCloudPublishStatus.UNPUBLISHED;
 
     @Column(name = "published_at")
     private LocalDateTime publishedAt;

@@ -2,6 +2,8 @@ package com.example.words.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -30,6 +32,13 @@ public class Classroom {
 
     @Column(name = "teacher_id", nullable = false)
     private Long teacherId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private ClassroomStatus status = ClassroomStatus.ACTIVE;
+
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;

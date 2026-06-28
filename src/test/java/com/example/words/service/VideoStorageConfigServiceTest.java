@@ -2,6 +2,7 @@ package com.example.words.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -11,6 +12,7 @@ import com.example.words.dto.CreateVideoStorageConfigRequest;
 import com.example.words.dto.UpdateVideoStorageConfigRequest;
 import com.example.words.dto.UpdateVideoStorageConfigStatusRequest;
 import com.example.words.dto.VideoStorageConfigResponse;
+import com.example.words.exception.BadRequestException;
 import com.example.words.model.AppUser;
 import com.example.words.model.UserRole;
 import com.example.words.model.UserStatus;
@@ -87,24 +89,24 @@ class VideoStorageConfigServiceTest {
     }
 
     @Test
-    void createShouldAutoPromoteFirstEnabledConfigToDefault() {
+    void createShouldAutoPromoteFirstEnabledVolcengineConfigToDefault() {
         AppUser actor = admin();
         CreateVideoStorageConfigRequest request = new CreateVideoStorageConfigRequest(
-                "腾讯云广州",
+                "火山云点播",
                 "secret-id-12345678",
                 "secret-key-12345678",
-                "ap-guangzhou",
+                "cn-north-1",
                 123456L,
                 "vod-procedure",
-                VideoStorageProviderType.TENCENT_VOD,
-                null,
+                VideoStorageProviderType.VOLCENGINE_VOD,
+                "learning-space",
                 VideoStorageConfigStatus.ENABLED,
                 Boolean.FALSE,
                 "default"
         );
 
         authenticate(actor);
-        when(videoStorageConfigRepository.existsByConfigName("腾讯云广州")).thenReturn(false);
+        when(videoStorageConfigRepository.existsByConfigName("火山云点播")).thenReturn(false);
         when(videoStorageConfigRepository.countByStatus(VideoStorageConfigStatus.ENABLED)).thenReturn(0L);
         when(videoStorageConfigRepository.save(any(VideoStorageConfig.class))).thenAnswer(invocation -> {
             VideoStorageConfig config = invocation.getArgument(0);
@@ -122,18 +124,42 @@ class VideoStorageConfigServiceTest {
     }
 
     @Test
+    void createShouldRejectTencentVodConfig() {
+        AppUser actor = admin();
+        CreateVideoStorageConfigRequest request = new CreateVideoStorageConfigRequest(
+                "腾讯云广州",
+                "secret-id-12345678",
+                "secret-key-12345678",
+                "ap-guangzhou",
+                123456L,
+                "vod-procedure",
+                VideoStorageProviderType.TENCENT_VOD,
+                null,
+                VideoStorageConfigStatus.ENABLED,
+                Boolean.FALSE,
+                "legacy"
+        );
+
+        authenticate(actor);
+
+        BadRequestException exception = assertThrows(BadRequestException.class, () -> videoStorageConfigService.create(request));
+
+        assertEquals("Tencent VOD is deprecated. Use Volcengine VOD for video storage.", exception.getMessage());
+    }
+
+    @Test
     void updateShouldKeepExistingSecretsWhenBlank() {
         AppUser actor = admin();
         VideoStorageConfig existing = existingConfig();
         UpdateVideoStorageConfigRequest request = new UpdateVideoStorageConfigRequest(
-                "腾讯云上海",
+                "火山云点播",
                 "   ",
                 "",
-                "ap-shanghai",
+                "cn-north-1",
                 223344L,
                 "procedure-b",
-                VideoStorageProviderType.TENCENT_VOD,
-                null,
+                VideoStorageProviderType.VOLCENGINE_VOD,
+                "learning-space",
                 VideoStorageConfigStatus.ENABLED,
                 Boolean.TRUE,
                 "updated"
@@ -141,14 +167,14 @@ class VideoStorageConfigServiceTest {
 
         authenticate(actor);
         when(videoStorageConfigRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
-        when(videoStorageConfigRepository.existsByConfigNameAndIdNot("腾讯云上海", existing.getId())).thenReturn(false);
+        when(videoStorageConfigRepository.existsByConfigNameAndIdNot("火山云点播", existing.getId())).thenReturn(false);
         when(videoStorageConfigRepository.save(any(VideoStorageConfig.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         VideoStorageConfigResponse response = videoStorageConfigService.update(existing.getId(), request);
 
         assertEquals("v1:secret-id", existing.getSecretIdEncrypted());
         assertEquals("v1:secret-key", existing.getSecretKeyEncrypted());
-        assertEquals("ap-shanghai", response.getRegion());
+        assertEquals("cn-north-1", response.getRegion());
         verify(videoStorageConfigRepository).clearDefaultByIdNot(existing.getId());
     }
 
@@ -216,13 +242,14 @@ class VideoStorageConfigServiceTest {
     private VideoStorageConfig existingConfig() {
         VideoStorageConfig config = new VideoStorageConfig();
         config.setId(9L);
-        config.setConfigName("腾讯云上海");
+        config.setConfigName("火山云点播");
         config.setSecretIdEncrypted("v1:secret-id");
         config.setSecretIdMasked("id****mask");
         config.setSecretKeyEncrypted("v1:secret-key");
         config.setSecretKeyMasked("key****mask");
-        config.setRegion("ap-shanghai");
-        config.setProviderType(VideoStorageProviderType.TENCENT_VOD);
+        config.setRegion("cn-north-1");
+        config.setProviderType(VideoStorageProviderType.VOLCENGINE_VOD);
+        config.setSpaceName("learning-space");
         config.setStatus(VideoStorageConfigStatus.ENABLED);
         config.setIsDefault(Boolean.FALSE);
         return config;

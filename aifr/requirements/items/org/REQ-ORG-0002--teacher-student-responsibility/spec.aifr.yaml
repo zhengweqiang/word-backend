@@ -21,7 +21,7 @@ aifr_spec:
 
   lifecycle:
     created_at: "2026-06-24"
-    updated_at: "2026-06-24"
+    updated_at: "2026-06-26"
     owner: backend
     reviewers:
       - backend
@@ -233,7 +233,12 @@ aifr_spec:
       - migration: V9__add_user_role_support.sql
       - migration: V10__add_classroom_support.sql
     expected_tests:
-      - TeacherStudentServiceTest
+      - TeacherStudentServiceTest#assignStudentShouldValidateRolesAndRemainIdempotent
+      - TeacherStudentServiceTest#assignStudentShouldRejectNonTeacher
+      - TeacherStudentServiceTest#getStudentsForTeacherShouldUnionDirectRelationsAndClassroomMembers
+      - TeacherStudentServiceTest#isTeacherResponsibleForStudentShouldIncludeClassroomMembers
+      - TeacherStudentServiceTest#getResponsibleTeacherIdsForStudentShouldUnionDirectRelationsAndClassroomOwners
+      - TeacherStudentServiceTest#isTeacherResponsibleForStudentShouldRejectUnrelatedStudent
       - AccessControlServiceTest
       - StudyPlanServiceTest
       - VideoAssetServiceTest

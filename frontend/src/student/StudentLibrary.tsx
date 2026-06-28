@@ -6,7 +6,13 @@ import { SyllableReader } from './SyllableReader';
 
 type LibraryTab = 'dictionaries' | 'wrong' | 'favorites';
 
-export function StudentLibrary({ dictionaries }: { dictionaries: Dictionary[] }) {
+export function StudentLibrary({
+  dictionaries,
+  initialDictionaryId,
+}: {
+  dictionaries: Dictionary[];
+  initialDictionaryId?: number | null;
+}) {
   const [tab, setTab] = useState<LibraryTab>('dictionaries');
   const [selectedDictionaryId, setSelectedDictionaryId] = useState<number | null>(null);
   const [words, setWords] = useState<MetaWord[]>([]);
@@ -20,6 +26,13 @@ export function StudentLibrary({ dictionaries }: { dictionaries: Dictionary[] })
   const [error, setError] = useState<string | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [favoriteUpdatingId, setFavoriteUpdatingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (initialDictionaryId) {
+      setTab('dictionaries');
+      setSelectedDictionaryId(initialDictionaryId);
+    }
+  }, [initialDictionaryId]);
 
   const selectTab = (nextTab: LibraryTab) => {
     setTab(nextTab);

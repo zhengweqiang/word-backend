@@ -18,6 +18,8 @@ public interface ClassroomDictionaryAssignmentRepository extends JpaRepository<C
 
     List<ClassroomDictionaryAssignment> findByDictionaryId(Long dictionaryId);
 
+    boolean existsByClassroomId(Long classroomId);
+
     boolean existsByClassroomIdAndDictionaryId(Long classroomId, Long dictionaryId);
 
     @Query("""

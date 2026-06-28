@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, House, Notebook, UserCircle, VideoCamera } from '@phosphor-icons/react';
+import { BookOpen, House, Notebook, UserCircle, UsersThree } from '@phosphor-icons/react';
 import { studentDashboardApi } from '../api';
 import type { Dictionary, StudentDashboard, User } from '../types';
+import { StudentClassrooms } from './StudentClassrooms';
 import { StudentDashboardHome } from './StudentDashboardHome';
 import { StudentLibrary } from './StudentLibrary';
 import { StudentProfile } from './StudentProfile';
 import { StudentStudySession } from './StudentStudySession';
-import { StudentVideos } from './StudentVideos';
 import './student-workspace.css';
 
-type StudentTab = 'home' | 'study' | 'library' | 'videos' | 'profile';
+type StudentTab = 'home' | 'study' | 'library' | 'classrooms' | 'profile';
 
 interface StudentWorkspaceProps {
   user: User;
@@ -21,7 +21,7 @@ const navItems = [
   { id: 'home' as const, label: '首页', icon: House },
   { id: 'study' as const, label: '学习', icon: BookOpen },
   { id: 'library' as const, label: '词库', icon: Notebook },
-  { id: 'videos' as const, label: '视频', icon: VideoCamera },
+  { id: 'classrooms' as const, label: '班级', icon: UsersThree },
   { id: 'profile' as const, label: '我的', icon: UserCircle },
 ];
 
@@ -30,6 +30,7 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
   const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [libraryDictionaryId, setLibraryDictionaryId] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadDashboard = useCallback(async () => {
@@ -88,8 +89,15 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
               onBackHome={() => setTab('home')}
             />
           )}
-          {tab === 'library' && <StudentLibrary dictionaries={dictionaries} />}
-          {tab === 'videos' && <StudentVideos />}
+          {tab === 'library' && <StudentLibrary dictionaries={dictionaries} initialDictionaryId={libraryDictionaryId} />}
+          {tab === 'classrooms' && (
+            <StudentClassrooms
+              onOpenDictionary={(dictionaryId) => {
+                setLibraryDictionaryId(dictionaryId);
+                setTab('library');
+              }}
+            />
+          )}
           {tab === 'profile' && <StudentProfile user={user} onSignOut={onSignOut} />}
         </div>
 

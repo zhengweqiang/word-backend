@@ -6,10 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 
+import com.example.words.dto.AppendStudyPlanStudentsRequest;
 import com.example.words.dto.CreateStudyPlanRequest;
 import com.example.words.dto.RecordStudyRequest;
 import com.example.words.dto.StudyPlanResponse;
@@ -18,6 +21,7 @@ import com.example.words.exception.BadRequestException;
 import com.example.words.model.AppUser;
 import com.example.words.model.AttentionState;
 import com.example.words.model.Classroom;
+import com.example.words.model.ClassroomStatus;
 import com.example.words.model.Dictionary;
 import com.example.words.model.DictionaryWord;
 import com.example.words.model.MetaWord;
@@ -65,6 +69,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 @ExtendWith(MockitoExtension.class)
 class StudyPlanServiceTest {
@@ -177,8 +182,8 @@ class StudyPlanServiceTest {
         dictionary.setId(10L);
         dictionary.setName("高考词汇");
 
-        Classroom classroom1 = new Classroom(100L, "一班", null, 7L, null, null);
-        Classroom classroom2 = new Classroom(101L, "二班", null, 7L, null, null);
+        Classroom classroom1 = classroom(100L, "一班", 7L);
+        Classroom classroom2 = classroom(101L, "二班", 7L);
 
         when(dictionaryService.findById(10L)).thenReturn(Optional.of(dictionary));
         when(dictionaryService.findVisibleDictionariesForClassrooms(List.of(100L, 101L), teacher))
@@ -235,8 +240,8 @@ class StudyPlanServiceTest {
         dictionary.setId(10L);
         dictionary.setName("高考词汇");
 
-        Classroom classroom1 = new Classroom(100L, "一班", null, 7L, null, null);
-        Classroom classroom2 = new Classroom(101L, "二班", null, 7L, null, null);
+        Classroom classroom1 = classroom(100L, "一班", 7L);
+        Classroom classroom2 = classroom(101L, "二班", 7L);
 
         when(dictionaryService.findById(10L)).thenReturn(Optional.of(dictionary));
         when(dictionaryService.findVisibleDictionariesForClassrooms(List.of(100L, 101L), teacher))
@@ -250,6 +255,167 @@ class StudyPlanServiceTest {
         );
 
         assertEquals("dictionaryId is not associated with all selected classrooms", exception.getMessage());
+    }
+
+    @Test
+    void createStudyPlanShouldRejectArchivedClassroom() {
+        AppUser teacher = new AppUser();
+        teacher.setId(7L);
+        teacher.setRole(UserRole.TEACHER);
+
+        CreateStudyPlanRequest request = new CreateStudyPlanRequest(
+                "高一春季计划",
+                "按遗忘曲线推进",
+                10L,
+                List.of(100L),
+                LocalDate.of(2026, 4, 1),
+                LocalDate.of(2026, 4, 30),
+                "Asia/Shanghai",
+                20,
+                40,
+                ReviewMode.EBBINGHAUS,
+                List.of(0, 1, 2, 4),
+                BigDecimal.valueOf(100),
+                LocalTime.of(21, 30),
+                true,
+                3,
+                120,
+                60,
+                15
+        );
+
+        Classroom classroom = classroom(100L, "一班", 7L);
+        classroom.setStatus(ClassroomStatus.ARCHIVED);
+
+        when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom));
+
+        AccessDeniedException exception = assertThrows(
+                AccessDeniedException.class,
+                () -> studyPlanService.createStudyPlan(request, teacher)
+        );
+
+        assertEquals("Archived classroom cannot be used for study plans", exception.getMessage());
+    }
+
+    @Test
+    void publishStudyPlanShouldRejectDictionaryNoLongerAvailableForClassrooms() {
+        AppUser teacher = new AppUser();
+        teacher.setId(7L);
+        teacher.setRole(UserRole.TEACHER);
+
+        StudyPlan studyPlan = studyPlan(55L, 7L, 10L, StudyPlanStatus.DRAFT);
+        Dictionary dictionary = dictionary(10L, "高考词汇");
+        List<StudyPlanClassroom> planClassrooms = List.of(
+                new StudyPlanClassroom(1L, 55L, 100L, null),
+                new StudyPlanClassroom(2L, 55L, 101L, null)
+        );
+
+        when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
+        when(dictionaryService.findById(10L)).thenReturn(Optional.of(dictionary));
+        when(studyPlanClassroomRepository.findByStudyPlanId(55L)).thenReturn(planClassrooms);
+        lenient().when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom(100L, "一班", 7L)));
+        lenient().when(classroomRepository.findById(101L)).thenReturn(Optional.of(classroom(101L, "二班", 7L)));
+        lenient().when(dictionaryService.findVisibleDictionariesForClassrooms(List.of(100L, 101L), teacher))
+                .thenReturn(List.of());
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> studyPlanService.publishStudyPlan(55L, teacher)
+        );
+
+        assertEquals("dictionaryId is not associated with all selected classrooms", exception.getMessage());
+        verify(studyPlanRepository, never()).save(any(StudyPlan.class));
+    }
+
+    @Test
+    void publishStudyPlanShouldRejectArchivedClassroom() {
+        AppUser teacher = new AppUser();
+        teacher.setId(7L);
+        teacher.setRole(UserRole.TEACHER);
+
+        StudyPlan studyPlan = studyPlan(55L, 7L, 10L, StudyPlanStatus.DRAFT);
+        Dictionary dictionary = dictionary(10L, "高考词汇");
+        Classroom archivedClassroom = classroom(100L, "一班", 7L);
+        archivedClassroom.setStatus(ClassroomStatus.ARCHIVED);
+
+        when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
+        when(dictionaryService.findById(10L)).thenReturn(Optional.of(dictionary));
+        when(studyPlanClassroomRepository.findByStudyPlanId(55L))
+                .thenReturn(List.of(new StudyPlanClassroom(1L, 55L, 100L, null)));
+        lenient().when(classroomRepository.findById(100L)).thenReturn(Optional.of(archivedClassroom));
+
+        AccessDeniedException exception = assertThrows(
+                AccessDeniedException.class,
+                () -> studyPlanService.publishStudyPlan(55L, teacher)
+        );
+
+        assertEquals("Archived classroom cannot be used for study plans", exception.getMessage());
+        verify(studyPlanRepository, never()).save(any(StudyPlan.class));
+    }
+
+    @Test
+    void appendStudentsShouldAddCurrentClassroomStudentToPublishedPlan() {
+        AppUser teacher = new AppUser();
+        teacher.setId(7L);
+        teacher.setRole(UserRole.TEACHER);
+
+        StudyPlan studyPlan = studyPlan(55L, 7L, 10L, StudyPlanStatus.PUBLISHED);
+        Dictionary dictionary = dictionary(10L, "高考词汇");
+        StudyPlanClassroom planClassroom = new StudyPlanClassroom(1L, 55L, 100L, null);
+
+        when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
+        when(studyPlanClassroomRepository.findByStudyPlanId(55L)).thenReturn(List.of(planClassroom));
+        when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom(100L, "一班", 7L)));
+        when(classroomMemberRepository.existsByClassroomIdInAndStudentId(List.of(100L), 22L)).thenReturn(true);
+        when(dictionaryService.findById(10L)).thenReturn(Optional.of(dictionary));
+        when(studentStudyPlanRepository.findByStudyPlanIdAndStudentIdOrderByCreatedAtAsc(55L, 22L))
+                .thenReturn(List.of());
+        when(studentStudyPlanRepository.save(any(StudentStudyPlan.class))).thenAnswer(invocation -> {
+            StudentStudyPlan studentStudyPlan = invocation.getArgument(0);
+            studentStudyPlan.setId(222L);
+            return studentStudyPlan;
+        });
+        when(studentStudyPlanRepository.findByStudyPlanIdOrderByStudentIdAsc(55L))
+                .thenReturn(List.of(new StudentStudyPlan(), new StudentStudyPlan()));
+
+        StudyPlanResponse response = studyPlanService.appendStudents(
+                55L,
+                new AppendStudyPlanStudentsRequest(List.of(22L)),
+                teacher
+        );
+
+        assertEquals(2L, response.getStudentCount());
+        verify(accessControlService).ensureCanAssignDictionaryToStudent(teacher, dictionary, 22L);
+        verify(dictionaryAssignmentService).assignDictionaryToStudents(dictionary, teacher, List.of(22L));
+        verify(studentStudyPlanRepository).save(any(StudentStudyPlan.class));
+    }
+
+    @Test
+    void appendStudentsShouldRejectStudentOutsideCurrentPlanClassrooms() {
+        AppUser teacher = new AppUser();
+        teacher.setId(7L);
+        teacher.setRole(UserRole.TEACHER);
+
+        StudyPlan studyPlan = studyPlan(55L, 7L, 10L, StudyPlanStatus.PUBLISHED);
+        StudyPlanClassroom planClassroom = new StudyPlanClassroom(1L, 55L, 100L, null);
+
+        when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
+        when(studyPlanClassroomRepository.findByStudyPlanId(55L)).thenReturn(List.of(planClassroom));
+        when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom(100L, "一班", 7L)));
+        when(classroomMemberRepository.existsByClassroomIdInAndStudentId(List.of(100L), 20L)).thenReturn(false);
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> studyPlanService.appendStudents(
+                        55L,
+                        new AppendStudyPlanStudentsRequest(List.of(20L)),
+                        teacher
+                )
+        );
+
+        assertEquals("studentId is not a current member of the study plan classrooms: 20", exception.getMessage());
+        verify(dictionaryAssignmentService, never()).assignDictionaryToStudents(any(), any(), any());
+        verify(studentStudyPlanRepository, never()).save(any(StudentStudyPlan.class));
     }
 
     @Test
@@ -598,6 +764,38 @@ class StudyPlanServiceTest {
         assertEquals(501L, savedProgressRef.get().getId());
         assertNotNull(savedRecordRef.get());
         assertEquals(2, savedRecordRef.get().getStageBefore());
+    }
+
+    private Classroom classroom(Long id, String name, Long teacherId) {
+        Classroom classroom = new Classroom();
+        classroom.setId(id);
+        classroom.setName(name);
+        classroom.setTeacherId(teacherId);
+        return classroom;
+    }
+
+    private Dictionary dictionary(Long id, String name) {
+        Dictionary dictionary = new Dictionary();
+        dictionary.setId(id);
+        dictionary.setName(name);
+        return dictionary;
+    }
+
+    private StudyPlan studyPlan(Long id, Long teacherId, Long dictionaryId, StudyPlanStatus status) {
+        StudyPlan studyPlan = new StudyPlan();
+        studyPlan.setId(id);
+        studyPlan.setName("高一春季计划");
+        studyPlan.setTeacherId(teacherId);
+        studyPlan.setDictionaryId(dictionaryId);
+        studyPlan.setTimezone("Asia/Shanghai");
+        studyPlan.setStartDate(LocalDate.of(2026, 4, 1));
+        studyPlan.setDailyNewCount(20);
+        studyPlan.setDailyReviewLimit(40);
+        studyPlan.setReviewIntervalsJson("[0,1,2,4]");
+        studyPlan.setDailyDeadlineTime(LocalTime.of(21, 30));
+        studyPlan.setCompletionThreshold(BigDecimal.valueOf(100));
+        studyPlan.setStatus(status);
+        return studyPlan;
     }
 
     private MetaWord metaWord(Long id, String word) {

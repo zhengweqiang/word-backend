@@ -1,6 +1,6 @@
 package com.example.words.model;
 
-public enum VideoPublishStatus {
+public enum VideoCloudPublishStatus {
     UNPUBLISHED,
     PUBLISHED
 }

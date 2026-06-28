@@ -1,4 +1,4 @@
-import { X } from "lucide-solid";
+import { CloudDownload, X } from "lucide-solid";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import { Alert } from "@/components/ui/alert";
@@ -16,7 +16,8 @@ import { compactFileSize, formatDateTime } from "@/lib/format";
 import type {
     PaginatedResponse,
     VideoAccessResponse,
-    VideoPublishStatus,
+    VideoCloudSyncResponse,
+    VideoCloudPublishStatus,
     VideoResponse,
     VideoStatus,
 } from "@/types/api";
@@ -40,13 +41,13 @@ const statusVariant = (status: VideoStatus): "warning" | "success" | "destructiv
     }
 };
 
-const publishStatusLabel: Record<VideoPublishStatus, string> = {
-    UNPUBLISHED: "未发布",
-    PUBLISHED: "已发布",
+const cloudPublishStatusLabel: Record<VideoCloudPublishStatus, string> = {
+    UNPUBLISHED: "云端停用",
+    PUBLISHED: "云端可播",
 };
 
-const publishStatusVariant = (publishStatus: VideoPublishStatus): "outline" | "success" =>
-    publishStatus === "PUBLISHED" ? "success" : "outline";
+const cloudPublishStatusVariant = (cloudPublishStatus: VideoCloudPublishStatus): "outline" | "success" =>
+    cloudPublishStatus === "PUBLISHED" ? "success" : "outline";
 
 const createDefaultForm = () => ({
     title: "",
@@ -60,7 +61,7 @@ export function VideosPage() {
     const [page, setPage] = createSignal(1);
     const [keyword, setKeyword] = createSignal("");
     const [status, setStatus] = createSignal<VideoStatus | "">("");
-    const [publishStatus, setPublishStatus] = createSignal<VideoPublishStatus | "">("");
+    const [cloudPublishStatus, setCloudPublishStatus] = createSignal<VideoCloudPublishStatus | "">("");
     const [form, setForm] = createStore(createDefaultForm());
     const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
     const [saving, setSaving] = createSignal(false);
@@ -82,7 +83,7 @@ export function VideosPage() {
             size: PAGE_SIZE,
             keyword: keyword().trim() || undefined,
             status: status() || undefined,
-            publishStatus: publishStatus() || undefined,
+            cloudPublishStatus: cloudPublishStatus() || undefined,
         };
     });
 
@@ -165,7 +166,16 @@ export function VideosPage() {
         setError("");
 
         try {
-            const access = await api.getVideoAccess(video.id);
+            let targetVideo = video;
+            if (!targetVideo.canPreview && targetVideo.canManage) {
+                targetVideo = await api.syncVideo(video.id);
+            }
+            if (!targetVideo.canPreview) {
+                setError(`视频「${video.title}」仍在处理中，暂时不能预览。`);
+                await refetch();
+                return;
+            }
+            const access = await api.getVideoAccess(targetVideo.id);
             setPreview(access);
         } catch (previewError) {
             setError(previewError instanceof Error ? previewError.message : "获取预览地址失败");
@@ -185,6 +195,23 @@ export function VideosPage() {
             await refetch();
         } catch (syncError) {
             setError(syncError instanceof Error ? syncError.message : "同步视频状态失败");
+        } finally {
+            setActionKey(null);
+        }
+    };
+
+    const handleSyncCloud = async () => {
+        setActionKey("sync-cloud");
+        setFeedback("");
+        setError("");
+
+        try {
+            const result: VideoCloudSyncResponse = await api.syncCloudVideos();
+            setFeedback(`火山视频同步完成：扫描 ${result.scanned} 个，新增 ${result.imported} 个，更新 ${result.updated} 个。`);
+            setPage(1);
+            await refetch();
+        } catch (syncError) {
+            setError(syncError instanceof Error ? syncError.message : "同步火山视频失败");
         } finally {
             setActionKey(null);
         }
@@ -267,6 +294,16 @@ export function VideosPage() {
                 description="管理员和老师可以在这里上传教学视频、同步云端状态，并在后台直接预览可播放资源。"
                 actions={
                     <div class="flex flex-wrap items-center gap-3">
+                        <Show when={auth.user()?.role === "ADMIN"}>
+                            <Button
+                                variant="outline"
+                                disabled={Boolean(actionKey())}
+                                onClick={() => void handleSyncCloud()}
+                            >
+                                <CloudDownload class="h-4 w-4" />
+                                {actionKey() === "sync-cloud" ? "同步中..." : "同步火山视频"}
+                            </Button>
+                        </Show>
                         <Button variant="outline" onClick={() => void refetch()}>
                             刷新
                         </Button>
@@ -369,15 +406,15 @@ export function VideosPage() {
                             </select>
                             <select
                                 class="h-11 w-full rounded-lg border border-input bg-background/70 px-3 text-sm"
-                                value={publishStatus()}
+                                value={cloudPublishStatus()}
                                 onChange={(event) => {
-                                    setPublishStatus(event.currentTarget.value as VideoPublishStatus | "");
+                                    setCloudPublishStatus(event.currentTarget.value as VideoCloudPublishStatus | "");
                                     setPage(1);
                                 }}
                             >
-                                <option value="">全部发布状态</option>
-                                <option value="UNPUBLISHED">未发布</option>
-                                <option value="PUBLISHED">已发布</option>
+                                <option value="">全部云端播放状态</option>
+                                <option value="UNPUBLISHED">云端停用</option>
+                                <option value="PUBLISHED">云端可播</option>
                             </select>
                         </div>
 
@@ -399,8 +436,8 @@ export function VideosPage() {
                                                         <Badge variant={statusVariant(video.status)}>
                                                             {statusLabel[video.status]}
                                                         </Badge>
-                                                        <Badge variant={publishStatusVariant(video.publishStatus)}>
-                                                            {publishStatusLabel[video.publishStatus]}
+                                                        <Badge variant={cloudPublishStatusVariant(video.cloudPublishStatus)}>
+                                                            {cloudPublishStatusLabel[video.cloudPublishStatus]}
                                                         </Badge>
                                                     </div>
                                                 </div>
@@ -421,11 +458,17 @@ export function VideosPage() {
                                                     </Show>
                                                 </div>
 
+                                                <Show when={video.errorMessage}>
+                                                    <p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                                                        {video.errorMessage}
+                                                    </p>
+                                                </Show>
+
                                                 <div class="flex flex-wrap gap-2">
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={!video.canPreview || Boolean(actionKey())}
+                                                        disabled={(!video.canPreview && !video.canManage) || Boolean(actionKey())}
                                                         onClick={() => void handlePreview(video)}
                                                     >
                                                         {actionKey() === `preview-${video.id}` ? "读取中..." : "预览"}
@@ -439,15 +482,15 @@ export function VideosPage() {
                                                         {actionKey() === `sync-${video.id}` ? "同步中..." : "同步状态"}
                                                     </Button>
                                                     <Show
-                                                        when={video.publishStatus === "PUBLISHED"}
+                                                        when={video.cloudPublishStatus === "PUBLISHED"}
                                                         fallback={
                                                             <Button
                                                                 variant="outline"
                                                                 size="sm"
-                                                                disabled={!video.canManage || !video.canPreview || Boolean(actionKey())}
+                                                                disabled={!video.canManage || Boolean(actionKey())}
                                                                 onClick={() => void handlePublish(video)}
                                                             >
-                                                                {actionKey() === `publish-${video.id}` ? "发布中..." : "发布"}
+                                                                {actionKey() === `publish-${video.id}` ? "启用中..." : "云端启用"}
                                                             </Button>
                                                         }
                                                     >
@@ -457,7 +500,7 @@ export function VideosPage() {
                                                             disabled={!video.canManage || Boolean(actionKey())}
                                                             onClick={() => void handleUnpublish(video)}
                                                         >
-                                                            {actionKey() === `unpublish-${video.id}` ? "下架中..." : "下架"}
+                                                            {actionKey() === `unpublish-${video.id}` ? "停用中..." : "云端停用"}
                                                         </Button>
                                                     </Show>
                                                     <Button

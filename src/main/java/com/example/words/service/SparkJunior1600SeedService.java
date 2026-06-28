@@ -5,6 +5,7 @@ import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
 import com.example.words.model.ClassroomDictionaryAssignment;
 import com.example.words.model.ClassroomMember;
+import com.example.words.model.ClassroomStatus;
 import com.example.words.model.Dictionary;
 import com.example.words.model.DictionaryAssignment;
 import com.example.words.model.ReviewMode;
@@ -107,6 +108,8 @@ public class SparkJunior1600SeedService {
                 CLASSROOM_NAME,
                 "固定种子数据：星火初中英语词汇1600词 25天计划",
                 teacher.getId(),
+                ClassroomStatus.ACTIVE,
+                null,
                 null,
                 null
         ));

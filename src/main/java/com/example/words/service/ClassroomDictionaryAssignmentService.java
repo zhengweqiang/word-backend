@@ -5,6 +5,7 @@ import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
 import com.example.words.model.ClassroomDictionaryAssignment;
 import com.example.words.model.ClassroomMember;
+import com.example.words.model.ClassroomStatus;
 import com.example.words.model.Dictionary;
 import com.example.words.model.ResourceScopeType;
 import com.example.words.model.UserRole;
@@ -60,6 +61,7 @@ public class ClassroomDictionaryAssignmentService {
     public int assignDictionariesToClassroom(Long classroomId, Collection<Long> dictionaryIds, AppUser actor) {
         Classroom classroom = getClassroomOrThrow(classroomId);
         ensureCanManageClassroom(actor, classroom);
+        ensureClassroomActive(classroom);
 
         int assignedCount = 0;
         for (Long dictionaryId : dictionaryIds == null ? List.<Long>of() : dictionaryIds.stream().distinct().toList()) {
@@ -222,6 +224,12 @@ public class ClassroomDictionaryAssignmentService {
         }
 
         throw new AccessDeniedException("You do not have permission to manage this classroom");
+    }
+
+    private void ensureClassroomActive(Classroom classroom) {
+        if (classroom.getStatus() == ClassroomStatus.ARCHIVED) {
+            throw new AccessDeniedException("Archived classroom cannot accept dictionary assignments");
+        }
     }
 
     private void ensureCanAssignDictionaryToClassroom(AppUser actor, Classroom classroom, Dictionary dictionary) {

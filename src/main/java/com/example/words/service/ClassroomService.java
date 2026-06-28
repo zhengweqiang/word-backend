@@ -9,13 +9,18 @@ import com.example.words.exception.ResourceNotFoundException;
 import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
 import com.example.words.model.ClassroomMember;
+import com.example.words.model.ClassroomStatus;
 import com.example.words.model.UserRole;
+import com.example.words.repository.ClassroomDictionaryAssignmentRepository;
 import com.example.words.repository.ClassroomMemberRepository;
 import com.example.words.repository.ClassroomRepository;
+import com.example.words.repository.StudyPlanClassroomRepository;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
@@ -33,14 +38,20 @@ public class ClassroomService {
 
     private final ClassroomRepository classroomRepository;
     private final ClassroomMemberRepository classroomMemberRepository;
+    private final StudyPlanClassroomRepository studyPlanClassroomRepository;
+    private final ClassroomDictionaryAssignmentRepository classroomDictionaryAssignmentRepository;
     private final UserService userService;
 
     public ClassroomService(
             ClassroomRepository classroomRepository,
             ClassroomMemberRepository classroomMemberRepository,
+            StudyPlanClassroomRepository studyPlanClassroomRepository,
+            ClassroomDictionaryAssignmentRepository classroomDictionaryAssignmentRepository,
             UserService userService) {
         this.classroomRepository = classroomRepository;
         this.classroomMemberRepository = classroomMemberRepository;
+        this.studyPlanClassroomRepository = studyPlanClassroomRepository;
+        this.classroomDictionaryAssignmentRepository = classroomDictionaryAssignmentRepository;
         this.userService = userService;
     }
 
@@ -71,8 +82,29 @@ public class ClassroomService {
                 .map(this::toResponse);
     }
 
+    @Transactional(readOnly = true)
+    public List<ClassroomResponse> findStudentClassrooms(AppUser actor) {
+        if (actor.getRole() != UserRole.STUDENT) {
+            throw new AccessDeniedException("Only students can access their classrooms");
+        }
+
+        Set<Long> classroomIds = classroomMemberRepository.findByStudentId(actor.getId()).stream()
+                .map(ClassroomMember::getClassroomId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (classroomIds.isEmpty()) {
+            return List.of();
+        }
+
+        return classroomRepository.findAllById(classroomIds).stream()
+                .filter(classroom -> classroom.getStatus() != ClassroomStatus.ARCHIVED)
+                .map(this::toResponse)
+                .toList();
+    }
+
     @Transactional
     public ClassroomResponse createClassroom(CreateClassroomRequest request, AppUser actor) {
+        String name = request.getName().trim();
+        ensureClassroomNameAvailable(name, null);
         Long teacherId = resolveTeacherId(request, actor);
         AppUser teacher = userService.getUserEntity(teacherId);
         if (teacher.getRole() != UserRole.TEACHER) {
@@ -80,9 +112,10 @@ public class ClassroomService {
         }
 
         Classroom classroom = new Classroom();
-        classroom.setName(request.getName().trim());
+        classroom.setName(name);
         classroom.setDescription(trimToNull(request.getDescription()));
         classroom.setTeacherId(teacherId);
+        classroom.setStatus(ClassroomStatus.ACTIVE);
 
         return toResponse(classroomRepository.save(classroom));
     }
@@ -92,7 +125,9 @@ public class ClassroomService {
         Classroom classroom = getClassroomEntity(classroomId);
         ensureCanManageClassroom(actor, classroom);
 
-        classroom.setName(request.getName().trim());
+        String name = request.getName().trim();
+        ensureClassroomNameAvailable(name, classroomId);
+        classroom.setName(name);
         classroom.setDescription(trimToNull(request.getDescription()));
         classroom.setTeacherId(resolveUpdatedTeacherId(request, classroom, actor));
 
@@ -100,10 +135,17 @@ public class ClassroomService {
     }
 
     @Transactional
-    public void deleteClassroom(Long classroomId, AppUser actor) {
+    public boolean deleteClassroom(Long classroomId, AppUser actor) {
         Classroom classroom = getClassroomEntity(classroomId);
         ensureCanManageClassroom(actor, classroom);
-        classroomRepository.delete(classroom);
+        if (canPhysicallyDelete(classroomId)) {
+            classroomRepository.delete(classroom);
+            return true;
+        }
+        classroom.setStatus(ClassroomStatus.ARCHIVED);
+        classroom.setArchivedAt(LocalDateTime.now());
+        classroomRepository.save(classroom);
+        return false;
     }
 
     @Transactional(readOnly = true)
@@ -121,6 +163,7 @@ public class ClassroomService {
     public void addStudentToClassroom(Long classroomId, Long studentId, AppUser actor) {
         Classroom classroom = getClassroomEntity(classroomId);
         ensureCanManageClassroom(actor, classroom);
+        ensureClassroomActive(classroom, "Archived classroom cannot accept new students");
 
         AppUser student = userService.getUserEntity(studentId);
         if (student.getRole() != UserRole.STUDENT) {
@@ -150,6 +193,7 @@ public class ClassroomService {
         List<Classroom> classrooms = classroomIds.stream()
                 .map(this::getClassroomEntity)
                 .peek(classroom -> ensureCanManageClassroom(actor, classroom))
+                .peek(classroom -> ensureClassroomActive(classroom, "Archived classroom cannot be used"))
                 .toList();
 
         List<Long> validClassroomIds = classrooms.stream()
@@ -176,6 +220,8 @@ public class ClassroomService {
                 classroom.getTeacherId(),
                 teacher.getDisplayName(),
                 classroomMemberRepository.countByClassroomId(classroom.getId()),
+                classroom.getStatus(),
+                classroom.getArchivedAt(),
                 classroom.getCreatedAt(),
                 classroom.getUpdatedAt()
         );
@@ -226,6 +272,27 @@ public class ClassroomService {
         }
 
         throw new AccessDeniedException("You do not have permission to manage this classroom");
+    }
+
+    private void ensureClassroomNameAvailable(String name, Long currentClassroomId) {
+        boolean duplicate = classroomRepository.findAll().stream()
+                .anyMatch(classroom -> classroom.getName().equals(name)
+                        && !Objects.equals(classroom.getId(), currentClassroomId));
+        if (duplicate) {
+            throw new BadRequestException("Classroom name already exists: " + name);
+        }
+    }
+
+    private boolean canPhysicallyDelete(Long classroomId) {
+        return classroomMemberRepository.countByClassroomId(classroomId) == 0
+                && !studyPlanClassroomRepository.existsByClassroomId(classroomId)
+                && !classroomDictionaryAssignmentRepository.existsByClassroomId(classroomId);
+    }
+
+    private void ensureClassroomActive(Classroom classroom, String message) {
+        if (classroom.getStatus() == ClassroomStatus.ARCHIVED) {
+            throw new AccessDeniedException(message);
+        }
     }
 
     private String trimToNull(String value) {

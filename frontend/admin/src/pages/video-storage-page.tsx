@@ -37,8 +37,8 @@ const createEmptyForm = (): FormState => ({
     configName: "",
     secretId: "",
     secretKey: "",
-    region: "ap-guangzhou",
-    providerType: "TENCENT_VOD",
+    region: "cn-north-1",
+    providerType: "VOLCENGINE_VOD",
     subAppId: "",
     spaceName: "",
     procedureName: "",
@@ -51,8 +51,8 @@ const createFormFromConfig = (config?: VideoStorageConfigResponse | null): FormS
     configName: config?.configName ?? "",
     secretId: "",
     secretKey: "",
-    region: config?.region ?? "ap-guangzhou",
-    providerType: config?.providerType ?? "TENCENT_VOD",
+    region: config?.region ?? "cn-north-1",
+    providerType: config?.providerType ?? "VOLCENGINE_VOD",
     subAppId: config?.subAppId ? String(config.subAppId) : "",
     spaceName: config?.spaceName ?? "",
     procedureName: config?.procedureName ?? "",
@@ -82,7 +82,7 @@ export function VideoStoragePage() {
     const subAppIdLabel = createMemo(() => isVolcengine() ? "AppId" : "SubAppId");
 
     const providerLabel = (providerType?: VideoStorageProviderType | null) =>
-        providerType === "VOLCENGINE_VOD" ? "火山云点播" : "腾讯云点播";
+        providerType === "TENCENT_VOD" ? "腾讯云点播（已停用）" : "火山云点播";
 
     const syncForm = (config?: VideoStorageConfigResponse | null) => {
         setForm(createFormFromConfig(config));
@@ -277,7 +277,7 @@ export function VideoStoragePage() {
             <PageHeader
                 eyebrow="Media"
                 title="视频存储"
-                description="统一维护腾讯云/火山云点播连接信息，控制平台默认上传配置，并验证后台连通性。"
+                description="统一维护火山云点播连接信息，控制平台默认上传配置，并验证后台连通性。"
                 actions={
                     <div class="flex flex-wrap items-center gap-3">
                         <Button variant="outline" onClick={() => void loadConfigs()}>
@@ -417,7 +417,7 @@ export function VideoStoragePage() {
                                         id="configName"
                                         value={form.configName}
                                         onInput={(event) => setForm("configName", event.currentTarget.value)}
-                                        placeholder="例如 腾讯云广州主账号"
+                                        placeholder="例如 火山云点播主账号"
                                     />
                                 </div>
                                 <div class="space-y-2">
@@ -429,12 +429,8 @@ export function VideoStoragePage() {
                                         onChange={(event) => {
                                             const nextProvider = event.currentTarget.value as VideoStorageProviderType;
                                             setForm("providerType", nextProvider);
-                                            if (nextProvider === "VOLCENGINE_VOD" && form.region === "ap-guangzhou") {
-                                                setForm("region", "cn-north-1");
-                                            }
                                         }}
                                     >
-                                        <option value="TENCENT_VOD">腾讯云点播</option>
                                         <option value="VOLCENGINE_VOD">火山云点播</option>
                                     </select>
                                 </div>
@@ -447,7 +443,7 @@ export function VideoStoragePage() {
                                         id="region"
                                         value={form.region}
                                         onInput={(event) => setForm("region", event.currentTarget.value)}
-                                        placeholder={isVolcengine() ? "例如 cn-north-1" : "例如 ap-guangzhou"}
+                                        placeholder="例如 cn-north-1"
                                     />
                                 </div>
                                 <Show

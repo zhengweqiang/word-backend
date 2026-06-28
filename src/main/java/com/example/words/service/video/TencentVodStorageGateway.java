@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import org.springframework.stereotype.Service;
 
 @Service
+@Deprecated(since = "2.0.0", forRemoval = false)
 public class TencentVodStorageGateway implements VideoStorageGateway {
 
     private final TencentVodGateway tencentVodGateway;

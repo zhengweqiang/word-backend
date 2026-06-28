@@ -142,6 +142,21 @@ export interface Classroom {
   updatedAt?: string | null;
 }
 
+export type ClassroomGroupFeedMessageType = 'TEXT' | 'DICTIONARY' | 'VIDEO';
+
+export interface ClassroomGroupFeedMessage {
+  id: number;
+  classroomId: number;
+  messageType: ClassroomGroupFeedMessageType;
+  content?: string | null;
+  resourceId?: number | null;
+  resourceTitle?: string | null;
+  resourceSummary?: string | null;
+  authorUserId: number;
+  authorName: string;
+  createdAt?: string | null;
+}
+
 export type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
 export type UserStatus = 'ACTIVE' | 'DISABLED' | 'LOCKED';
@@ -304,17 +319,6 @@ export interface Page<T> {
   first: boolean;
   last: boolean;
   empty: boolean;
-}
-
-export interface StudentVideo {
-  id: number;
-  title: string;
-  description?: string | null;
-  coverUrl?: string | null;
-  durationSeconds?: number | null;
-  createdByDisplayName: string;
-  publishedAt?: string | null;
-  updatedAt?: string | null;
 }
 
 export interface VideoAccessResponse {

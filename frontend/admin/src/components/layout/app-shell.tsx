@@ -9,6 +9,7 @@ import {
     DatabaseZap,
     LayoutDashboard,
     LogOut,
+    MessageSquare,
     School,
     ShieldCheck,
     Users,
@@ -40,6 +41,7 @@ export function AppShell(props: AppShellProps) {
             { href: "/users", label: "用户管理", icon: Users, roles: ["ADMIN", "TEACHER"] },
             { href: "/ai-configs", label: "AI 配置", icon: Bot, roles: ["ADMIN"] },
             { href: "/classrooms", label: "班级管理", icon: School, roles: ["ADMIN", "TEACHER"] },
+            { href: "/classrooms/chat", label: "班级聊天", icon: MessageSquare, roles: ["ADMIN", "TEACHER"] },
             { href: "/dictionaries", label: "词书资源", icon: BookCopy, roles: ["ADMIN", "TEACHER"] },
             { href: "/videos", label: "视频资源", icon: Clapperboard, roles: ["ADMIN", "TEACHER"] },
             { href: "/video-storage", label: "视频存储", icon: Cloud, roles: ["ADMIN"] },
@@ -91,7 +93,8 @@ export function AppShell(props: AppShellProps) {
                                     const isActive = () =>
                                         item.href === "/"
                                             ? location.pathname === "/"
-                                            : location.pathname.startsWith(item.href);
+                                            : location.pathname === item.href
+                                                || (item.href !== "/classrooms" && location.pathname.startsWith(`${item.href}/`));
 
                                     return (
                                         <A

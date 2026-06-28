@@ -1,7 +1,7 @@
 aifr_spec:
   schema_version: "1.0.0"
   id: REQ-ORG-0001
-  version: "1.1.0"
+  version: "3.1.0"
   title: 班级基础管理与成员维护
   type: functional
   status: draft
@@ -20,7 +20,7 @@ aifr_spec:
 
   lifecycle:
     created_at: "2026-06-22"
-    updated_at: "2026-06-24"
+    updated_at: "2026-06-26"
     owner: backend
     reviewers:
       - backend
@@ -28,12 +28,12 @@ aifr_spec:
 
   versioning:
     change_type: minor
-    previous_version: "1.0.0"
+    previous_version: "3.0.0"
     supersedes:
-      - REQ-ORG-0001@1.0.0
+      - REQ-ORG-0001@3.0.0
     superseded_by: null
     breaking_change: false
-    change_summary: 拆分班级基础管理、成员维护、师生责任和班级辞书分配边界。
+    change_summary: 明确班级转移只影响未来管理权，不改变已发布学习计划或历史统计归属。
 
   revision_history:
     - version: "1.0.0"
@@ -42,9 +42,18 @@ aifr_spec:
     - version: "1.1.0"
       change_type: minor
       summary: 聚焦班级 CRUD 与成员维护，并将师生责任、班级辞书、学习计划范围拆为关联需求。
+    - version: "2.0.0"
+      change_type: major
+      summary: 默认删除改为归档，受限物理删除不得删除已有学习历史。
+    - version: "3.0.0"
+      change_type: major
+      summary: 班级名称改为全局唯一，不按老师或归档状态放宽。
+    - version: "3.1.0"
+      change_type: minor
+      summary: 新增班级转移后的未来管理权与历史归属边界。
 
   intent:
-    user_goal: 管理员和教师可以创建、查看、更新、删除班级，并维护班级中的学生成员。
+    user_goal: 管理员和教师可以创建、查看、更新、归档班级，并维护班级中的学生成员。
     business_value: 为班级辞书分配、教师学生范围、学习计划发布和学生学习权限提供稳定的教学组织边界。
 
   scope:
@@ -53,7 +62,10 @@ aifr_spec:
       - 班级分页查询
       - 班级创建
       - 班级更新
-      - 班级删除
+      - 班级归档
+      - 空班级或无历史误创建班级的受限物理删除
+      - 班级名称全局唯一校验
+      - 管理员转移班级负责老师后的归属边界
       - 班级学生列表
       - 添加班级学生
       - 移除班级学生
@@ -61,7 +73,7 @@ aifr_spec:
     out:
       - 学生自助加入班级
       - 多教师共同管理同一个班级
-      - 班级归档或恢复
+      - 归档班级恢复为活跃班级
       - 班级成员历史审计
       - 前端班级页面交互细节
 
@@ -81,6 +93,14 @@ aifr_spec:
     classroom_member: 学生加入班级后形成的班级成员关系。
     actor: 当前已认证并调用班级接口的用户。
     student_count: 按 classroomId 统计的班级成员数量。
+    globally_unique_classroom_name: 在所有班级中不可重复的班级名称，不因负责老师不同或班级归档而允许重复。
+    active_classroom: 可新增成员、分配辞书、创建学习计划和访问班级群消息流的班级。
+    archived_classroom: 已停止当前教学组织用途但保留历史追溯价值的班级。
+    physical_delete_classroom: 仅用于空班级或无历史误创建班级的不可恢复删除。
+    historical_classroom_artifact: 与班级相关的已发布学习计划、学习记录、学习进度、班级群消息流和统计等历史结果。
+    classroom_transfer: 管理员将班级当前负责老师变更为另一名教师的动作。
+    future_classroom_management: 班级转移后由新负责老师执行的新增成员、资源分配和新学习计划创建等未来管理行为。
+    historical_plan_ownership: 班级转移前已经发布的学习计划及其历史统计仍归原学习计划归属老师管理。
 
   preconditions:
     - 调用者已认证。
@@ -110,12 +130,28 @@ aifr_spec:
       invariant: unique(classroom_member.classroom_id, classroom_member.student_id)
 
     - id: RULE-006
-      description: 删除班级时，数据库应级联删除班级成员、班级辞书分配和学习计划班级关联。
-      invariant: delete classroom cascades classroom_members and dependent classroom relations
+      description: 默认班级删除行为必须归档班级，不得物理删除已有历史结果的班级。
+      invariant: default_classroom_delete = archive and archive preserves historical_classroom_artifact
 
     - id: RULE-007
       description: 班级分页查询 page 从 1 开始，size 限制在 1 到 100，排序字段只允许 name、createdAt、updatedAt。
       invariant: normalized_page >= 0 and 1 <= normalized_size <= 100 and sort_by in [name, createdAt, updatedAt]
+
+    - id: RULE-008
+      description: 归档班级不得用于新增成员、发布新资源、创建新学习计划或访问当前班级群消息流。
+      invariant: archived_classroom blocks new_membership and new_resource_assignment and new_study_plan and current_group_feed_access
+
+    - id: RULE-009
+      description: 物理删除班级仅允许空班级或无历史误创建班级。
+      invariant: physical_delete_classroom_allowed iff no classroom_members and no historical_classroom_artifact
+
+    - id: RULE-010
+      description: 班级名称必须全局唯一，创建或更新班级时不得与任何既有班级重名。
+      invariant: unique(classroom.name) across all classrooms including archived_classrooms
+
+    - id: RULE-011
+      description: 管理员转移班级负责老师只改变未来班级管理权，不改变已发布学习计划或历史统计归属。
+      invariant: classroom_transfer changes future_classroom_management but preserves historical_plan_ownership
 
   scenarios:
     - id: SCN-001
@@ -179,6 +215,73 @@ aifr_spec:
         - 不创建重复成员关系
         - 返回 204
 
+    - id: SCN-006
+      name: 有历史的班级删除时归档
+      given:
+        - actor 可管理 classroomId = 100
+        - classroomId = 100 已有关联的已发布学习计划或学习记录
+      when:
+        - 调用班级删除能力
+      then:
+        - classroomId = 100 被标记为 archived_classroom
+        - 既有学习计划、学习记录、学习进度和班级群消息流历史不被删除
+        - classroomId = 100 不再允许新增学生、分配辞书或创建新学习计划
+
+    - id: SCN-007
+      name: 空误创建班级允许物理删除
+      given:
+        - actor 可管理 classroomId = 101
+        - classroomId = 101 没有班级成员
+        - classroomId = 101 没有已发布学习计划、学习记录、学习进度或班级群消息流历史
+      when:
+        - 调用班级物理删除能力
+      then:
+        - classroomId = 101 被物理删除
+        - 不产生孤儿班级成员或班级辞书分配
+
+    - id: SCN-008
+      name: 不同老师不能创建同名班级
+      given:
+        - 已存在 classroomId = 100
+        - classroomId = 100.name = "一班"
+        - classroomId = 100.teacherId = 7
+        - actor.role = ADMIN
+        - request.teacherId = 8
+        - request.name = "一班"
+      when:
+        - 调用 POST /api/classrooms
+      then:
+        - 创建被拒绝
+        - 不创建第二个名为 "一班" 的班级
+
+    - id: SCN-009
+      name: 归档班级名称仍占用全局唯一名称
+      given:
+        - 已存在 classroomId = 100
+        - classroomId = 100.name = "一班"
+        - classroomId = 100 已归档
+        - request.name = "一班"
+      when:
+        - 调用 POST /api/classrooms
+      then:
+        - 创建被拒绝
+        - 归档班级名称不被新班级复用
+
+    - id: SCN-010
+      name: 班级转移后新老师接手未来管理
+      given:
+        - actor.role = ADMIN
+        - classroomId = 100 当前 teacherId = 7
+        - classroomId = 100 已有关联的已发布学习计划 studyPlan.id = 55
+        - studyPlan.id = 55.teacherId = 7
+      when:
+        - 管理员将 classroomId = 100 的 teacherId 更新为 8
+      then:
+        - classroomId = 100 的当前负责老师变为 teacherId = 8
+        - teacherId = 8 可以为 classroomId = 100 创建新的学习计划和分配新资源
+        - studyPlan.id = 55.teacherId 仍为 7
+        - studyPlan.id = 55 的历史统计仍归 teacherId = 7 查看和管理
+
   acceptance_criteria:
     - id: AC-001
       text: 班级列表、分页、详情相关成员查询必须按管理员全量和教师本人班级过滤。
@@ -207,9 +310,29 @@ aifr_spec:
         - RULE-005
 
     - id: AC-006
-      text: 删除班级后，依赖 classroomId 的成员和分配关系不得残留为孤儿记录。
+      text: 默认班级删除必须归档班级，并保留既有学习计划、学习记录、学习进度、班级群消息流和统计历史。
       verifies:
         - RULE-006
+
+    - id: AC-007
+      text: 归档班级不得继续承接新增成员、资源分配、新学习计划或当前班级群消息流访问。
+      verifies:
+        - RULE-008
+
+    - id: AC-008
+      text: 物理删除班级必须限制为空班级或无历史误创建班级，并保证不产生孤儿记录。
+      verifies:
+        - RULE-009
+
+    - id: AC-009
+      text: 创建或更新班级时，班级名称必须在全量班级范围内唯一，归档班级名称也不得被复用。
+      verifies:
+        - RULE-010
+
+    - id: AC-010
+      text: 管理员转移班级负责老师后，新负责老师获得未来管理权，既有已发布学习计划和历史统计仍归原计划老师。
+      verifies:
+        - RULE-011
 
   interfaces:
     apis:
@@ -232,7 +355,8 @@ aifr_spec:
       - method: DELETE
         path: /api/classrooms/{id}
         request_schema: none
-        response_schema: message,id
+        response_schema: message,id,status
+        usage: 默认执行归档语义；只有空班级或无历史误创建班级才可物理删除。
       - method: GET
         path: /api/classrooms/{id}/students
         request_schema: none
@@ -247,7 +371,8 @@ aifr_spec:
         response_schema: none
     persistence:
       - table: classrooms
-        constraints: teacher_id references users(id) on delete cascade
+        constraints: unique(name), teacher_id references users(id) on delete cascade
+        expected_columns: status,archived_at
       - table: classroom_members
         constraints: unique(classroom_id, student_id), classroom_id references classrooms(id) on delete cascade, student_id references users(id) on delete cascade
 
@@ -261,17 +386,25 @@ aifr_spec:
       - dto: UpdateClassroomRequest
       - dto: ClassroomResponse
       - migration: V10__add_classroom_support.sql
+      - migration: add_classroom_archive_status
     expected_tests:
       - ClassroomServiceTest
       - ClassroomsPageTest
       - StudyPlanServiceTest
       - SparkJunior1600SeedServiceTest
+      - ClassroomServiceTest#deleteClassroomWithHistoryShouldArchive
+      - ClassroomServiceTest#deleteEmptyMistakenClassroomShouldPhysicallyDelete
+      - ClassroomServiceTest#archivedClassroomShouldRejectNewMembersAndAssignments
+      - ClassroomServiceTest#createClassroomShouldRejectDuplicateNameAcrossTeachers
+      - ClassroomServiceTest#createClassroomShouldRejectNameUsedByArchivedClassroom
+      - ClassroomServiceTest#transferClassroomShouldPreservePublishedPlanOwnership
+      - StudyPlanServiceTest#transferredClassroomNewTeacherCanCreateNewPlanButCannotOwnHistoricalPlan
 
   risk:
     level: high
     reasons:
       - 班级所有权是教师可见范围、学生范围、辞书分配和学习计划权限的基础。
-      - 删除班级会通过外键级联影响多张业务表。
+      - 物理删除班级会通过外键级联影响多张业务表并可能破坏历史追溯。
 
   non_functional:
     security:
@@ -280,9 +413,11 @@ aifr_spec:
     reliability:
       - 班级成员写入必须在事务中完成。
       - 重复添加成员不得破坏唯一约束。
+      - 归档班级不得删除历史学习结果。
+      - 物理删除前必须确认班级无成员且无历史结果。
+      - 班级名称唯一性必须由服务层校验和数据库唯一约束共同保证。
+      - 班级转移不得批量改写既有学习计划归属。
     performance:
       - 分页查询必须限制最大 page size 为 100。
 
-  open_questions:
-    - 删除班级是否需要产品层二次确认或软删除，目前代码为物理删除并依赖外键级联。
-    - 班级名称是否需要同一教师下唯一，目前代码和数据库未强制唯一。
+  open_questions: []

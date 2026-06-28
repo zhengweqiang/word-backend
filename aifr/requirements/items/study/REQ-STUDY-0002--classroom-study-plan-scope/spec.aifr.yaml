@@ -1,7 +1,7 @@
 aifr_spec:
   schema_version: "1.0.0"
   id: REQ-STUDY-0002
-  version: "1.0.0"
+  version: "1.5.0"
   title: 班级范围学习计划约束
   type: functional
   status: draft
@@ -19,7 +19,7 @@ aifr_spec:
 
   lifecycle:
     created_at: "2026-06-24"
-    updated_at: "2026-06-24"
+    updated_at: "2026-06-26"
     owner: backend
     reviewers:
       - backend
@@ -27,17 +27,33 @@ aifr_spec:
       - product
 
   versioning:
-    change_type: initial
-    previous_version: null
-    supersedes: []
+    change_type: minor
+    previous_version: "1.4.0"
+    supersedes:
+      - REQ-STUDY-0002@1.4.0
     superseded_by: null
     breaking_change: false
-    change_summary: 从 StudyPlanService 中班级解析、班级辞书交集和发布流程反推的初始需求。
+    change_summary: 明确离班计划学生仍出现在计划历史报表中，但不计入当前班级统计。
 
   revision_history:
     - version: "1.0.0"
       change_type: initial
       summary: 初始代码基线。
+    - version: "1.1.0"
+      change_type: minor
+      summary: 新增发布时学生快照、显式追加和离班历史保留的边界规则。
+    - version: "1.2.0"
+      change_type: minor
+      summary: 新增班级辞书移除后已发布计划继续有效、草稿发布前重新校验的边界规则。
+    - version: "1.3.0"
+      change_type: minor
+      summary: 新增班级转移后既有学习计划归属不变、新老师仅管理未来计划的边界规则。
+    - version: "1.4.0"
+      change_type: minor
+      summary: 新增离班学生继续完成旧计划、不接收未来班级计划和资源的边界规则。
+    - version: "1.5.0"
+      change_type: minor
+      summary: 新增计划历史报表与当前班级统计的离班学生统计口径。
 
   intent:
     user_goal: 教师或管理员创建学习计划时，只能选择自己可管理且属于同一教师的班级，并使用这些班级共同可用的辞书。
@@ -53,11 +69,16 @@ aifr_spec:
       - 保存 study_plan_classrooms 关联
       - 发布计划时按班级成员创建 StudentStudyPlan
       - 发布计划时把计划辞书分配给班级学生
+      - 发布后班级成员变化与既有学生计划的边界
+      - 班级辞书分配移除后对已发布和未发布学习计划的影响
+      - 班级转移后已发布学习计划归属边界
+      - 学生离开班级后对既有个人计划和未来班级计划的影响
+      - 离班学生在计划历史报表和当前班级统计中的口径
     out:
       - 学习计划编辑时变更班级范围
-      - 班级成员变更后自动同步已发布计划
       - 跨教师协作学习计划
       - 班级范围外的个别学生加减
+      - 自动把新加入班级的学生同步到已发布学习计划
 
   actors:
     primary:
@@ -76,6 +97,19 @@ aifr_spec:
     plan_teacher: 学习计划归属教师；教师创建时为当前教师，管理员创建时为所选班级所属教师。
     dictionary_available_for_classrooms: 目标辞书属于所有所选班级的可见辞书交集。
     publish_target_students: 发布时根据计划班级成员快照推导出的学生集合。
+    study_plan_student_snapshot: 学习计划发布时由目标班级当前学生成员确定的学生集合。
+    explicit_plan_append: 老师或管理员对已发布学习计划执行的显式追加学生操作。
+    transferred_out_plan_student: 发布后离开目标班级但仍保留既有个人学习计划和学习历史的学生。
+    published_plan_resource_continuity: 已发布学习计划在原班级辞书分配被移除后仍保持既有个人计划、任务、记录和进度有效。
+    pre_publish_dictionary_revalidation: 草稿或未发布学习计划在发布前重新校验目标辞书是否仍属于所有目标班级的共同可见辞书。
+    study_plan_owner_teacher: 学习计划创建和发布时确定的负责老师。
+    transferred_classroom_new_teacher: 班级转移后新的班级负责老师。
+    historical_plan_statistics: 已发布学习计划产生的学生计划、任务、学习记录、学习进度和统计结果。
+    transferred_out_study_plan_student: 已获得个人学习计划但后来被移出目标班级的学生。
+    assigned_legacy_plan: 学生离班前已经分配给该学生的个人学习计划。
+    future_classroom_plan: 学生离班后该班级新创建、发布或追加的学习计划。
+    plan_history_report: 围绕某个已发布学习计划展示的历史和后续完成情况报表，包含该计划学生快照中的学生。
+    current_classroom_statistics: 以当前班级学生成员为统计对象的班级运营数据。
 
   preconditions:
     - 调用者已认证。
@@ -115,6 +149,50 @@ aifr_spec:
     - id: RULE-008
       description: 发布计划时，系统必须先确认调用者可给每个目标学生分配计划辞书，再创建学生计划。
       invariant: publish_allowed requires can_assign_dictionary_to_student for all publish_target_students
+
+    - id: RULE-009
+      description: 已发布学习计划采用发布时学生快照；发布后新加入目标班级的学生不会自动获得该计划。
+      invariant: student_added_to_classroom_after_publish does_not_create StudentStudyPlan automatically
+
+    - id: RULE-010
+      description: 新加入班级的学生如需进入已发布学习计划，必须由老师或管理员显式追加到该计划。
+      invariant: post_publish_plan_membership_added only_by explicit_plan_append
+
+    - id: RULE-011
+      description: 学生在计划发布后离开目标班级时，既有个人学习计划和学习历史必须保留。
+      invariant: transferred_out_plan_student retains StudentStudyPlan and study_history
+
+    - id: RULE-012
+      description: 班级辞书分配在计划发布后被移除时，已发布学习计划仍继续有效并保留既有学习历史。
+      invariant: removing_classroom_dictionary_assignment_after_publish does_not_invalidate published_study_plan
+
+    - id: RULE-013
+      description: 草稿或未发布学习计划在发布前必须重新校验目标辞书仍属于所有目标班级的共同可见辞书。
+      invariant: publish_allowed requires dictionary_available_for_classrooms at publish_time
+
+    - id: RULE-014
+      description: 班级转移后，既有已发布学习计划的归属老师和历史统计归属不得变更。
+      invariant: classroom_transfer does_not_change study_plan_owner_teacher or historical_plan_statistics_owner
+
+    - id: RULE-015
+      description: 班级转移后的新负责老师可以基于当前班级创建新的学习计划，但不会自动接管历史学习计划。
+      invariant: transferred_classroom_new_teacher can_create future_study_plan but cannot_own historical_published_plan automatically
+
+    - id: RULE-016
+      description: 学生离开班级后，仍可继续完成离班前已分配给自己的旧学习计划。
+      invariant: transferred_out_study_plan_student can_continue assigned_legacy_plan
+
+    - id: RULE-017
+      description: 学生离开班级后，不再自动获得该班级未来发布、追加或创建的学习计划。
+      invariant: transferred_out_study_plan_student not_in future_classroom_plan_targets unless explicitly_reassigned_by_valid_scope
+
+    - id: RULE-018
+      description: 离班计划学生仍应出现在其已分配旧计划的计划历史报表中，报表包含其离班后的继续完成情况。
+      invariant: plan_history_report includes transferred_out_study_plan_student legacy_plan_progress
+
+    - id: RULE-019
+      description: 离班计划学生不得计入当前班级统计。
+      invariant: current_classroom_statistics excludes transferred_out_study_plan_student
 
   scenarios:
     - id: SCN-001
@@ -174,6 +252,134 @@ aifr_spec:
         - 为两个学生创建 StudentStudyPlan
         - studyPlan.status = PUBLISHED
 
+    - id: SCN-006
+      name: 新学生加入班级后不会自动加入已发布计划
+      given:
+        - studyPlan.id = 55 已发布
+        - studyPlan.id = 55 的学生快照包含 studentIds = [20, 21]
+        - studentId = 22 后续加入 studyPlan.id = 55 关联的 classroomId = 100
+      when:
+        - 学生或老师查询 studyPlan.id = 55 的计划学生列表
+      then:
+        - 不自动创建 studentId = 22 的 StudentStudyPlan
+        - studentId = 22 不出现在该计划学生列表中
+        - 如需让 studentId = 22 参与该计划，必须执行显式追加
+
+    - id: SCN-007
+      name: 学生离班后保留既有学习计划历史
+      given:
+        - studyPlan.id = 55 已发布
+        - studentId = 20 已拥有 studyPlan.id = 55 的 StudentStudyPlan
+        - studentId = 20 已产生学习记录
+      when:
+        - studentId = 20 被移出 studyPlan.id = 55 关联的班级
+      then:
+        - studentId = 20 的 StudentStudyPlan 不被删除
+        - studentId = 20 的学习记录不被删除
+        - 班级当前成员口径的后续统计不再把 studentId = 20 视为当前班级学生
+
+    - id: SCN-008
+      name: 已发布计划在班级辞书移除后继续有效
+      given:
+        - studyPlan.id = 55 已发布
+        - studyPlan.id = 55 使用 dictionaryId = 10
+        - dictionaryId = 10 曾属于 studyPlan.id = 55 关联班级的共同可见辞书
+        - studentId = 20 已拥有 studyPlan.id = 55 的 StudentStudyPlan
+      when:
+        - 老师从目标班级移除 dictionaryId = 10
+      then:
+        - studyPlan.id = 55 保持已发布状态
+        - studentId = 20 的 StudentStudyPlan、学习任务、学习记录和学习进度不被删除
+
+    - id: SCN-009
+      name: 草稿计划发布前重新校验班级辞书
+      given:
+        - studyPlan.id = 56 为 DRAFT
+        - studyPlan.id = 56 使用 dictionaryId = 10
+        - dictionaryId = 10 已不再属于 studyPlan.id = 56 关联班级的共同可见辞书
+      when:
+        - 老师发布 studyPlan.id = 56
+      then:
+        - 发布被拒绝
+        - 返回 dictionaryId is not associated with all selected classrooms
+        - 不创建新的 StudentStudyPlan
+
+    - id: SCN-010
+      name: 班级转移不改变已发布计划归属
+      given:
+        - classroomId = 100 原负责老师为 teacherId = 7
+        - studyPlan.id = 55 已发布
+        - studyPlan.id = 55.teacherId = 7
+        - studyPlan.id = 55 关联 classroomId = 100
+      when:
+        - 管理员将 classroomId = 100 的负责老师转移为 teacherId = 8
+      then:
+        - studyPlan.id = 55.teacherId 仍为 7
+        - studyPlan.id = 55 的学生计划、学习记录、学习进度和统计归 teacherId = 7 查看和管理
+        - teacherId = 8 不会自动成为 studyPlan.id = 55 的归属老师
+
+    - id: SCN-011
+      name: 新负责老师创建转移后的新计划
+      given:
+        - classroomId = 100 当前负责老师为 teacherId = 8
+        - classroomId = 100 曾由 teacherId = 7 管理
+      when:
+        - teacherId = 8 为 classroomId = 100 创建并发布新学习计划
+      then:
+        - 新学习计划 teacherId = 8
+        - 新学习计划不改变 teacherId = 7 既有已发布学习计划归属
+
+    - id: SCN-012
+      name: 学生离班后继续完成旧计划
+      given:
+        - studentId = 20 曾属于 classroomId = 100
+        - studyPlan.id = 55 已发布并关联 classroomId = 100
+        - studentId = 20 已拥有 studyPlan.id = 55 的 StudentStudyPlan
+        - studentId = 20 已被移出 classroomId = 100
+      when:
+        - studentId = 20 打开或提交 studyPlan.id = 55 的今日任务
+      then:
+        - 允许 studentId = 20 继续访问自己的 StudentStudyPlan
+        - 允许记录 studyPlan.id = 55 下的学习结果
+        - 不要求 studentId = 20 仍是 classroomId = 100 当前成员
+
+    - id: SCN-013
+      name: 学生离班后不接收班级未来计划
+      given:
+        - studentId = 20 曾属于 classroomId = 100
+        - studentId = 20 已被移出 classroomId = 100
+        - studyPlan.id = 56 是 classroomId = 100 后续新发布的学习计划
+      when:
+        - 发布 studyPlan.id = 56 或查询 studentId = 20 的学习计划列表
+      then:
+        - 不为 studentId = 20 自动创建 studyPlan.id = 56 的 StudentStudyPlan
+        - studentId = 20 的学习计划列表不包含 studyPlan.id = 56
+
+    - id: SCN-014
+      name: 离班学生仍出现在旧计划历史报表
+      given:
+        - studentId = 20 曾属于 classroomId = 100
+        - studentId = 20 已拥有 studyPlan.id = 55 的 StudentStudyPlan
+        - studentId = 20 已被移出 classroomId = 100
+        - studentId = 20 离班后继续完成 studyPlan.id = 55 的任务
+      when:
+        - 原计划老师查看 studyPlan.id = 55 的计划历史报表
+      then:
+        - 报表包含 studentId = 20
+        - 报表展示 studentId = 20 离班前和离班后的学习进度与完成情况
+
+    - id: SCN-015
+      name: 离班学生不计入当前班级统计
+      given:
+        - studentId = 20 曾属于 classroomId = 100
+        - studentId = 20 已被移出 classroomId = 100
+        - classroomId = 100 当前成员为 studentIds = [21, 22]
+      when:
+        - 老师查看 classroomId = 100 的当前班级统计
+      then:
+        - 当前班级统计只基于 studentIds = [21, 22]
+        - studentId = 20 不计入当前班级人数、当前完成率或当前缺勤统计
+
   acceptance_criteria:
     - id: AC-001
       text: 创建学习计划时，空 classroomIds 必须被拒绝。
@@ -207,6 +413,61 @@ aifr_spec:
         - RULE-007
         - RULE-008
 
+    - id: AC-007
+      text: 已发布学习计划不得因班级新增学生而自动创建新的 StudentStudyPlan。
+      verifies:
+        - RULE-009
+
+    - id: AC-008
+      text: 已发布学习计划追加新学生必须通过显式追加操作表达，不得由班级成员变更隐式触发。
+      verifies:
+        - RULE-010
+
+    - id: AC-009
+      text: 学生离开班级后，已存在的个人学习计划和学习记录必须保留。
+      verifies:
+        - RULE-011
+
+    - id: AC-010
+      text: 移除班级辞书不得使已发布学习计划失效，不得删除既有个人计划、任务、记录或进度。
+      verifies:
+        - RULE-012
+
+    - id: AC-011
+      text: 草稿或未发布学习计划发布前必须按当前班级辞书交集重新校验目标辞书可用性。
+      verifies:
+        - RULE-013
+
+    - id: AC-012
+      text: 班级转移不得改变已发布学习计划的归属老师、学生计划、学习记录、学习进度或历史统计归属。
+      verifies:
+        - RULE-014
+
+    - id: AC-013
+      text: 班级转移后的新负责老师只能创建和管理未来学习计划，不得自动接管历史已发布学习计划。
+      verifies:
+        - RULE-015
+
+    - id: AC-014
+      text: 学生离开班级后，仍可继续访问和完成离班前已经分配给自己的个人学习计划。
+      verifies:
+        - RULE-016
+
+    - id: AC-015
+      text: 学生离开班级后，不得因该班级后续发布或追加学习计划而自动获得新的 StudentStudyPlan。
+      verifies:
+        - RULE-017
+
+    - id: AC-016
+      text: 计划历史报表必须保留离班计划学生，并展示其离班后的旧计划继续完成情况。
+      verifies:
+        - RULE-018
+
+    - id: AC-017
+      text: 当前班级统计必须排除已离开班级的计划学生。
+      verifies:
+        - RULE-019
+
   interfaces:
     apis:
       - method: POST
@@ -216,6 +477,10 @@ aifr_spec:
       - method: POST
         path: /api/study-plans/{id}/publish
         request_schema: none
+        response_schema: StudyPlanResponse
+      - method: POST
+        path: /api/study-plans/{id}/students
+        request_schema: AppendStudyPlanStudentsRequest
         response_schema: StudyPlanResponse
       - method: GET
         path: /api/study-plans
@@ -235,6 +500,8 @@ aifr_spec:
       - method_hint: resolveManagedClassrooms
       - method_hint: ensureDictionaryAvailableForClassrooms
       - method_hint: publishStudyPlan
+      - method_hint: appendStudents
+      - dto: AppendStudyPlanStudentsRequest
       - service: DictionaryService
       - service: AccessControlService
       - repository: StudyPlanClassroomRepository
@@ -244,6 +511,18 @@ aifr_spec:
       - StudyPlanServiceTest#createStudyPlanShouldPersistDraftPlan
       - StudyPlanServiceTest#createStudyPlanShouldRejectDictionaryOutsideSelectedClassroomIntersection
       - StudyPlanServiceTest#publishStudyPlanShouldAssignDictionaryToClassroomMembers
+      - StudyPlanServiceTest#classroomMemberAddedAfterPublishShouldNotCreateStudentStudyPlan
+      - StudyPlanServiceTest#removingClassroomMemberShouldPreserveExistingStudentStudyPlanHistory
+      - StudyPlanServiceTest#publishedPlanShouldRemainValidAfterClassroomDictionaryRemoved
+      - StudyPlanServiceTest#draftPlanPublishShouldRevalidateDictionaryClassroomIntersection
+      - StudyPlanServiceTest#appendStudentsShouldAddCurrentClassroomStudentToPublishedPlan
+      - StudyPlanServiceTest#appendStudentsShouldRejectStudentOutsideCurrentPlanClassrooms
+      - StudyPlanServiceTest#classroomTransferShouldNotChangePublishedPlanTeacher
+      - StudyPlanServiceTest#newClassroomTeacherShouldCreateFuturePlanWithoutOwningHistoricalPlan
+      - StudyPlanServiceTest#removedClassroomStudentShouldContinueAssignedLegacyPlan
+      - StudyPlanServiceTest#removedClassroomStudentShouldNotReceiveFutureClassroomPlan
+      - StudyPlanServiceTest#planHistoryReportShouldIncludeTransferredOutStudentProgress
+      - StudyPlanServiceTest#currentClassroomStatisticsShouldExcludeTransferredOutStudent
 
   risk:
     level: critical
@@ -258,12 +537,12 @@ aifr_spec:
     reliability:
       - 创建计划和保存班级关联必须在事务中完成。
       - 发布计划时目标学生应按班级成员去重，避免重复创建学生计划。
+      - 班级成员变更不得隐式改写已发布学习计划的学生快照。
+      - 班级辞书分配变化不得回写已发布学习计划历史。
+      - 班级负责老师变更不得批量改写已发布学习计划归属或历史统计归属。
+      - 学生离班不得删除或阻断其已分配个人学习计划。
+      - 计划历史报表和当前班级统计必须使用不同成员口径，避免历史断裂或当前数据污染。
     performance:
       - 班级 ID 和学生 ID 应去重后处理，避免重复写入和重复权限校验。
 
-  open_questions:
-    - 班级成员在计划发布后新增，是否应自动加入已发布计划，目前代码未实现。
-    - 班级辞书分配移除后，已有学习计划是否继续有效，目前代码未重新校验。
-
-
-
+  open_questions: []

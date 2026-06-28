@@ -49,7 +49,7 @@ public class VideoStorageConfig {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "provider_type", nullable = false, length = 32)
-    private VideoStorageProviderType providerType = VideoStorageProviderType.TENCENT_VOD;
+    private VideoStorageProviderType providerType = VideoStorageProviderType.VOLCENGINE_VOD;
 
     @Column(name = "sub_app_id")
     private Long subAppId;

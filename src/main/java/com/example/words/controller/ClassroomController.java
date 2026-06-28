@@ -85,10 +85,11 @@ public class ClassroomController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public ResponseEntity<Map<String, Object>> deleteClassroom(@PathVariable Long id) {
-        classroomService.deleteClassroom(id, currentUserService.getCurrentUser());
+        boolean physicallyDeleted = classroomService.deleteClassroom(id, currentUserService.getCurrentUser());
         return ResponseEntity.ok(Map.of(
-                "message", "Classroom deleted successfully",
-                "id", id
+                "message", physicallyDeleted ? "Classroom deleted successfully" : "Classroom archived successfully",
+                "id", id,
+                "status", physicallyDeleted ? "DELETED" : "ARCHIVED"
         ));
     }
 

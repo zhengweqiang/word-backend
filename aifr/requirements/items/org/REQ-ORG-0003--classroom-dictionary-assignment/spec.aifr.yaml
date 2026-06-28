@@ -1,7 +1,7 @@
 aifr_spec:
   schema_version: "1.0.0"
   id: REQ-ORG-0003
-  version: "1.0.0"
+  version: "1.1.0"
   title: 班级辞书分配与可见性
   type: functional
   status: draft
@@ -20,24 +20,28 @@ aifr_spec:
 
   lifecycle:
     created_at: "2026-06-24"
-    updated_at: "2026-06-24"
+    updated_at: "2026-06-26"
     owner: backend
     reviewers:
       - backend
       - qa
 
   versioning:
-    change_type: initial
-    previous_version: null
-    supersedes: []
+    change_type: minor
+    previous_version: "1.0.0"
+    supersedes:
+      - REQ-ORG-0003@1.0.0
     superseded_by: null
     breaking_change: false
-    change_summary: 从 ClassroomDictionaryAssignmentService、DictionaryService 和 DictionaryController 反推的初始需求。
+    change_summary: 明确移除班级辞书只影响当前可见性，不回写已发布学习计划或既有学习历史。
 
   revision_history:
     - version: "1.0.0"
       change_type: initial
       summary: 初始代码基线。
+    - version: "1.1.0"
+      change_type: minor
+      summary: 新增班级辞书移除后的当前权限与历史保留边界。
 
   intent:
     user_goal: 管理员和教师可以把辞书分配给班级，学生通过班级获得可学习辞书。
@@ -52,6 +56,7 @@ aifr_spec:
       - 按学生所在班级推导可见辞书
       - 按教师所管班级推导可见辞书
       - 多班级辞书交集查询
+      - 移除班级辞书后的当前权限与历史保留边界
     out:
       - 班级辞书分配审批
       - 分配到期时间
@@ -74,6 +79,8 @@ aifr_spec:
     classroom_dictionary_intersection: 多个班级共同分配的辞书集合。
     classroom_visible_dictionary: 因学生所在班级或教师管理班级而对用户可见的辞书。
     direct_dictionary_assignment: 辞书直接分配给学生的关系，不属于本需求的写入范围但会与班级分配合并为学生可见辞书。
+    current_dictionary_visibility: 基于当前系统辞书、直接分配和班级分配关系计算出的辞书可见性。
+    historical_study_artifact: 已发布学习计划、学生学习记录、学习进度和已形成的学生单词记忆等历史学习结果。
 
   preconditions:
     - 调用者已认证。
@@ -117,6 +124,14 @@ aifr_spec:
     - id: RULE-009
       description: 学生不得按 classroomIds 参数过滤辞书。
       invariant: dictionary_filter_by_classroom_allowed requires actor.role in [ADMIN, TEACHER]
+
+    - id: RULE-010
+      description: 从班级移除辞书后，该辞书不再通过该班级贡献当前辞书可见性。
+      invariant: removed_classroom_dictionary_assignment not_in current_dictionary_visibility for classroom_members
+
+    - id: RULE-011
+      description: 从班级移除辞书不得删除或改写已发布学习计划、学习记录、学习进度或既有学生单词记忆。
+      invariant: removing_classroom_dictionary_assignment does_not_delete historical_study_artifact
 
   scenarios:
     - id: SCN-001
@@ -180,6 +195,30 @@ aifr_spec:
       then:
         - 只返回 dictionaryId = 10
 
+    - id: SCN-006
+      name: 移除班级辞书后不再作为当前班级可见辞书
+      given:
+        - studentId = 20 是 classroomId = 100 的成员
+        - classroomId = 100 已分配 dictionaryId = 10
+      when:
+        - 老师从 classroomId = 100 移除 dictionaryId = 10
+      then:
+        - dictionaryId = 10 不再因 classroomId = 100 对 studentId = 20 可见
+        - 后续创建学习计划时，dictionaryId = 10 不再属于 classroomId = 100 的班级辞书交集
+
+    - id: SCN-007
+      name: 移除班级辞书不删除既有学习历史
+      given:
+        - classroomId = 100 曾分配 dictionaryId = 10
+        - dictionaryId = 10 已用于已发布学习计划 studyPlan.id = 55
+        - studentId = 20 已在 studyPlan.id = 55 下产生学习记录和学习进度
+      when:
+        - 老师从 classroomId = 100 移除 dictionaryId = 10
+      then:
+        - studyPlan.id = 55 不被删除
+        - studentId = 20 的学习记录和学习进度不被删除
+        - 既有学生单词记忆不被删除
+
   acceptance_criteria:
     - id: AC-001
       text: 班级辞书查询、分配和移除必须执行班级管理权限校验。
@@ -213,6 +252,16 @@ aifr_spec:
       verifies:
         - RULE-008
         - RULE-009
+
+    - id: AC-007
+      text: 移除班级辞书后，该辞书不得继续通过该班级授予学生或教师当前可见性。
+      verifies:
+        - RULE-010
+
+    - id: AC-008
+      text: 移除班级辞书不得删除或改写已发布学习计划、学习记录、学习进度或既有学生单词记忆。
+      verifies:
+        - RULE-011
 
   interfaces:
     apis:
@@ -257,6 +306,8 @@ aifr_spec:
       - DictionaryServiceTest
       - StudentWordMemoryServiceTest
       - StudyPlanServiceTest
+      - ClassroomDictionaryAssignmentServiceTest#removeDictionaryShouldNotDeleteHistoricalStudyArtifacts
+      - DictionaryServiceTest#removedClassroomDictionaryShouldNotRemainVisibleThroughClassroom
 
   risk:
     level: high
@@ -272,9 +323,9 @@ aifr_spec:
     reliability:
       - 分配写入必须在事务内完成。
       - 唯一约束和服务层幂等必须共同避免重复分配。
+      - 移除班级辞书只改变当前可见性，不得回写历史学习结果。
     performance:
       - 多班级交集计算应在班级 ID 去重后进行，避免重复扫描。
 
   open_questions:
-    - 是否需要在移除班级辞书时同步处理已经因该班级辞书生成的学生学习计划或记忆盒，目前代码未做级联业务处理。
     - 班级辞书返回排序目前按名称忽略大小写排序，是否需要产品层固定排序策略。

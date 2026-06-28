@@ -1,7 +1,7 @@
 package com.example.words.dto;
 
 import com.example.words.model.ResourceScopeType;
-import com.example.words.model.VideoPublishStatus;
+import com.example.words.model.VideoCloudPublishStatus;
 import com.example.words.model.VideoStatus;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
@@ -24,7 +24,7 @@ public class VideoResponse {
     private String coverUrl;
     private Long durationSeconds;
     private VideoStatus status;
-    private VideoPublishStatus publishStatus;
+    private VideoCloudPublishStatus cloudPublishStatus;
     private String errorMessage;
     private Long createdBy;
     private String createdByDisplayName;

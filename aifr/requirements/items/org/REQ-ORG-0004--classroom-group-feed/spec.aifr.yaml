@@ -1,0 +1,417 @@
+aifr_spec:
+  schema_version: "1.0.0"
+  id: REQ-ORG-0004
+  version: "1.2.0"
+  title: 班级群消息流留言与资源发布
+  type: functional
+  status: draft
+  priority: high
+
+  identity:
+    primary_domain: ORG
+    domain_path: org
+    frozen_slug: classroom-group-feed
+    canonical_path: aifr/requirements/items/org/REQ-ORG-0004--classroom-group-feed/spec.aifr.yaml
+    naming_standard_version: "1.0.0"
+    related_domains:
+      - AUTH
+      - DICT
+      - VIDEO
+
+  lifecycle:
+    created_at: "2026-06-25"
+    updated_at: "2026-06-26"
+    owner: backend
+    reviewers:
+      - backend
+      - frontend
+      - qa
+      - product
+
+  versioning:
+    change_type: minor
+    previous_version: "1.1.0"
+    supersedes:
+      - REQ-ORG-0004@1.1.0
+    superseded_by: null
+    breaking_change: false
+    change_summary: 明确公共教学视频的班级群视频入口会授予当前班级学生从该入口播放该视频的许可，但不授予视频库浏览权或管理权。
+
+  revision_history:
+    - version: "1.0.0"
+      change_type: initial
+      summary: 初始需求版本。
+    - version: "1.1.0"
+      change_type: minor
+      summary: 统一班级群消息流术语，新增资源发布不授权和打开资源时二次权限校验规则。
+    - version: "1.2.0"
+      change_type: minor
+      summary: 新增公共教学视频通过班级群视频入口授权当前班级学生播放的边界规则。
+
+  intent:
+    user_goal: 同一个班级的老师和同学可以在班级群消息流中交流，老师可以把词书、学习计划和公共教学视频入口发布给班级同学学习。
+    business_value: 将班级组织关系、学习资源入口和师生互动集中到班级群消息流中，降低老师通知和资源分发成本。
+
+  scope:
+    in:
+      - 班级自动拥有一条班级群消息流
+      - 班级老师发布文字留言
+      - 班级学生发布文字留言
+      - 班级老师和学生查看班级群消息流
+      - 老师把已关联到该班级的词书入口发布到班级群消息流
+      - 老师把公共教学视频入口发布到班级群消息流
+      - 学生从班级群消息流查看词书发布消息并进入词书学习
+      - 当前班级学生从班级群消息流的视频入口进入视频观看
+      - 词书和学习计划发布只创建班级群消息流消息入口，不授予新的词书或学习计划资源权限
+      - 公共教学视频的班级群视频入口授予当前班级学生从该入口播放该视频的许可
+      - 班级群视频入口不授予学生视频库浏览权、视频管理权或离班后的继续播放权
+      - 学生打开词书、学习计划或视频资源时必须再次按当前资源状态和班级成员关系校验
+      - 班级成员变更后班级群消息流可见范围跟随当前班级成员
+    out:
+      - 私聊
+      - 跨班级消息流
+      - 班级群消息流公告
+      - 消息已读回执
+      - 消息撤回
+      - 消息置顶
+      - 消息审核流
+      - 实时 WebSocket 推送
+      - 非文字附件上传
+      - 资源评论楼中楼
+
+  actors:
+    primary:
+      - teacher
+      - student
+    secondary:
+      - classroom_service
+      - classroom_member_repository
+      - dictionary_service
+      - video_asset_service
+      - access_control_service
+
+  domain_terms:
+    classroom_group_feed: 由班级自动拥有的师生消息流，访问范围等同于当前班级老师和当前班级成员。
+    group_message: 班级群消息流中的一条消息，可以是文字留言、词书入口发布或视频入口分享。
+    text_message: 老师或学生在班级群消息流发布的纯文字留言。
+    dictionary_share_message: 老师把班级已关联词书入口发布到班级群消息流后形成的资源消息入口。
+    video_share_message: 老师把公共教学视频入口发布到班级群消息流后形成的视频学习入口。
+    resource_entry_message: 词书、学习计划或视频发布形成的班级群消息流消息入口。词书和学习计划入口只指向资源；公共教学视频入口授予当前班级学生从该入口播放该视频的许可。
+    classroom_video_entry: 班级负责老师把公共教学视频发布到班级群消息流后形成的视频学习入口，当前班级学生可以通过该入口播放视频。
+    group_member: 当前班级老师或当前班级学生成员。
+    associated_dictionary: 已通过班级辞书分配关系关联到该班级的词书。
+    public_teaching_video: 已就绪且系统内已发布的视频，所有老师可在视频资源中看到、预览并分享到自己负责的班级群。
+    shareable_video: 老师可以分享到自己负责班级群的视频，必须是公共教学视频。
+
+  preconditions:
+    - 调用者已认证。
+    - 目标 classroomId 必须存在。
+    - 老师必须是该班级 teacherId 对应的负责老师，才可以向班级群消息流发布词书或视频入口。
+    - 学生必须是该班级当前成员，才可以查看或发布班级群消息流文字留言。
+    - 发布到班级群消息流的词书必须已关联到该班级。
+    - 发布到班级群消息流的视频必须是公共教学视频。
+
+  rules:
+    - id: RULE-001
+      description: 每个班级自动拥有一条班级群消息流，消息流不需要单独创建、加入或解散。
+      invariant: classroom_group_feed_exists iff classroom_exists
+
+    - id: RULE-002
+      description: 班级群消息流可见范围必须等同于当前班级老师和当前班级成员。
+      formula: group_feed_visible_users = classroom.teacher_id union current_classroom_member_student_ids
+
+    - id: RULE-003
+      description: 班级老师和当前班级学生可以在班级群消息流发布文字留言。
+      invariant: text_message_create_allowed iff actor is classroom_teacher or actor is current_classroom_student
+
+    - id: RULE-004
+      description: 非班级老师且非当前班级学生不得查看或发布班级群消息流消息。
+      invariant: group_feed_access_allowed iff actor in group_feed_visible_users
+
+    - id: RULE-005
+      description: 只有班级老师可以把词书入口发布到班级群消息流。
+      invariant: dictionary_share_create_allowed iff actor.id = classroom.teacher_id
+
+    - id: RULE-006
+      description: 发布到班级群消息流的词书必须已关联到该班级。
+      invariant: dictionary_share_allowed requires classroom_dictionary_assignment exists for classroom_id and dictionary_id
+
+    - id: RULE-007
+      description: 只有班级老师可以把视频入口发布到班级群消息流。
+      invariant: video_share_create_allowed iff actor.id = classroom.teacher_id
+
+    - id: RULE-008
+      description: 发布到班级群消息流的视频必须是公共教学视频，且老师必须是目标班级负责老师。
+      invariant: video_share_allowed requires actor.id = classroom.teacher_id and video.status = READY and video.publish_status = PUBLISHED
+
+    - id: RULE-009
+      description: 班级群消息流必须按创建时间倒序分页返回，并包含消息类型、发布人、发布时间和资源摘要。
+      invariant: group_feed ordered_by created_at desc and paginated
+
+    - id: RULE-010
+      description: 学生离开班级后，不得继续查看该班级群消息流的历史消息或资源分享。
+      invariant: removed_student_group_access = denied
+
+    - id: RULE-011
+      description: 词书和学习计划发布只创建班级群消息流消息入口，不授予新的词书或学习计划资源权限。
+      invariant: dictionary_or_study_plan_entry_message_created does_not_change resource_access_grants
+
+    - id: RULE-012
+      description: 公共教学视频的班级群视频入口授予当前班级学生从该入口播放该视频的许可，但不授予视频库浏览权或管理权。
+      invariant: classroom_video_entry_grant_scope = current_classroom_members_only and no_video_library_or_management_permission
+
+    - id: RULE-013
+      description: 学生从班级群消息流打开资源时，必须按当前资源状态和当前班级成员关系再次校验。
+      invariant: resource_open_allowed iff current_resource_state_allows_access and actor in group_feed_visible_users
+
+  scenarios:
+    - id: SCN-001
+      name: 班级学生发布留言
+      given:
+        - classroomId = 100 存在
+        - studentId = 20 是 classroomId = 100 的当前成员
+      when:
+        - studentId = 20 调用 POST /api/classrooms/100/group-feed/messages 发布文字内容
+      then:
+        - 创建 text_message
+        - 消息发布人为 studentId = 20
+        - 同班老师和当前班级成员可在班级群消息流中看到该留言
+
+    - id: SCN-002
+      name: 非班级学生不能查看班级群消息流
+      given:
+        - classroomId = 100 存在
+        - studentId = 21 不是 classroomId = 100 的当前成员
+      when:
+        - studentId = 21 调用 GET /api/classrooms/100/group-feed/messages
+      then:
+        - 拒绝访问
+        - 不返回班级群消息流消息
+
+    - id: SCN-003
+      name: 老师发布班级已关联词书
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - dictionaryId = 10 已关联到 classroomId = 100
+      when:
+        - teacherId = 7 调用 POST /api/classrooms/100/group-feed/dictionaries
+      then:
+        - 创建 dictionary_share_message
+        - 消息包含 dictionaryId = 10 的词书摘要
+        - 班级学生可从消息入口进入词书学习，并在进入时再次按当前词书权限校验
+
+    - id: SCN-004
+      name: 老师不能发布未关联到班级的词书
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - dictionaryId = 11 未关联到 classroomId = 100
+      when:
+        - teacherId = 7 调用 POST /api/classrooms/100/group-feed/dictionaries
+      then:
+        - 返回业务错误
+        - 不创建 dictionary_share_message
+
+    - id: SCN-005
+      name: 老师分享视频到班级群消息流
+      given:
+        - teacherId = 7 是 classroomId = 100 的负责老师
+        - videoId = 30 是公共教学视频
+      when:
+        - teacherId = 7 调用 POST /api/classrooms/100/group-feed/videos
+      then:
+        - 创建 video_share_message
+        - 消息包含 videoId = 30 的视频摘要
+        - 当前班级学生可从班级群视频入口播放 videoId = 30
+        - 该入口不授予学生视频库浏览权或视频管理权
+
+    - id: SCN-006
+      name: 学生移出班级后失去班级群消息流访问权
+      given:
+        - studentId = 20 曾是 classroomId = 100 的成员
+        - 班级群消息流中已有历史留言和资源分享
+        - studentId = 20 已被移出 classroomId = 100
+      when:
+        - studentId = 20 调用 GET /api/classrooms/100/group-feed/messages
+      then:
+        - 拒绝访问
+        - 不返回历史留言和资源分享
+
+    - id: SCN-007
+      name: 词书发布后权限变化不允许继续打开
+      given:
+        - studentId = 20 是 classroomId = 100 的当前成员
+        - classroomId = 100 的班级群消息流中已有 dictionaryId = 10 的发布消息
+        - dictionaryId = 10 已不再对 studentId = 20 当前可见
+      when:
+        - studentId = 20 从班级群消息流点击 dictionaryId = 10 的消息入口
+      then:
+        - 拒绝进入词书学习
+        - 不因历史消息入口授予 dictionaryId = 10 的访问权限
+
+    - id: SCN-008
+      name: 当前班级学生通过班级群视频入口播放公共教学视频
+      given:
+        - studentId = 20 是 classroomId = 100 的当前成员
+        - classroomId = 100 的班级群消息流中已有 videoId = 30 的分享消息
+        - videoId = 30 是公共教学视频
+      when:
+        - studentId = 20 从班级群消息流点击 videoId = 30 的消息入口
+      then:
+        - 系统允许播放 videoId = 30
+        - 不授予 studentId = 20 视频库浏览权或视频管理权
+
+    - id: SCN-009
+      name: 视频发布后下架不允许继续播放
+      given:
+        - studentId = 20 是 classroomId = 100 的当前成员
+        - classroomId = 100 的班级群消息流中已有 videoId = 30 的分享消息
+        - videoId = 30 当前 publishStatus = UNPUBLISHED
+      when:
+        - studentId = 20 从班级群消息流点击 videoId = 30 的消息入口
+      then:
+        - 拒绝视频播放
+        - 历史班级群视频入口不绕过当前视频状态
+
+  acceptance_criteria:
+    - id: AC-001
+      text: 系统必须让每个班级具备一条隐式班级群消息流，且无需单独创建消息流或加入消息流。
+      verifies:
+        - RULE-001
+
+    - id: AC-002
+      text: 班级群消息流查看和文字留言权限必须限制在当前班级老师和当前班级学生范围内。
+      verifies:
+        - RULE-002
+        - RULE-003
+        - RULE-004
+        - RULE-010
+
+    - id: AC-003
+      text: 老师发布词书入口到班级群消息流时，必须校验老师是班级负责人且词书已关联到该班级。
+      verifies:
+        - RULE-005
+        - RULE-006
+
+    - id: AC-004
+      text: 老师发布视频入口到班级群消息流时，必须校验老师是班级负责人且视频是公共教学视频。
+      verifies:
+        - RULE-007
+        - RULE-008
+
+    - id: AC-005
+      text: 班级群消息流必须分页返回，并区分文字留言、词书发布和视频分享三类消息。
+      verifies:
+        - RULE-009
+
+    - id: AC-006
+      text: 学生从词书、学习计划或视频消息入口打开资源时，系统必须按当前资源状态和当前班级成员关系再次校验。
+      verifies:
+        - RULE-006
+        - RULE-008
+        - RULE-013
+
+    - id: AC-007
+      text: 词书和学习计划发布消息不得授予新的资源权限，资源权限变化后历史消息入口不得绕过当前权限。
+      verifies:
+        - RULE-011
+
+    - id: AC-008
+      text: 公共教学视频的班级群视频入口必须允许当前班级学生播放该视频，但不得授予学生视频库浏览权或视频管理权。
+      verifies:
+        - RULE-012
+        - RULE-013
+
+  interfaces:
+    apis:
+      - method: GET
+        path: /api/classrooms/{classroomId}/group-feed/messages
+        request_schema: page,size,messageType?
+        response_schema: Page<ClassroomGroupFeedMessageResponse>
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/messages
+        request_schema: CreateClassroomGroupFeedTextMessageRequest
+        response_schema: ClassroomGroupFeedMessageResponse
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/dictionaries
+        request_schema: ShareClassroomGroupFeedDictionaryRequest
+        response_schema: ClassroomGroupFeedMessageResponse
+      - method: POST
+        path: /api/classrooms/{classroomId}/group-feed/videos
+        request_schema: ShareClassroomGroupFeedVideoRequest
+        response_schema: ClassroomGroupFeedMessageResponse
+      - method: GET
+        path: /api/dictionaries/{dictionaryId}
+        request_schema: none
+        response_schema: Dictionary
+        usage: 学生从词书消息入口打开资源时复用当前词书可见性校验。
+      - method: GET
+        path: /api/students/me/videos/{videoId}/play
+        request_schema: none
+        response_schema: VideoAccessResponse
+        usage: 学生从视频消息入口打开资源时复用当前视频播放权限校验。
+    persistence:
+      - table: classroom_group_feed_messages
+        expected_columns: id,classroom_id,author_user_id,message_type,content,resource_id,resource_title,resource_summary,created_at
+      - table: classrooms
+        usage: 校验班级存在和负责老师
+      - table: classroom_members
+        usage: 校验当前学生是否属于班级
+      - table: classroom_dictionary_assignments
+        usage: 校验词书是否已关联到班级
+      - table: video_assets
+        usage: 校验视频是否可分享和当前可观看
+
+  trace:
+    expected_code:
+      - controller: ClassroomGroupFeedController
+      - service: ClassroomGroupFeedService
+      - service: ClassroomService
+      - service: ClassroomDictionaryAssignmentService
+      - service: VideoAssetService
+      - service: AccessControlService
+      - repository: ClassroomGroupFeedMessageRepository
+      - model: ClassroomGroupFeedMessage
+      - dto: ClassroomGroupFeedMessageResponse
+      - dto: CreateClassroomGroupFeedTextMessageRequest
+      - dto: ShareClassroomGroupFeedDictionaryRequest
+      - dto: ShareClassroomGroupFeedVideoRequest
+      - migration: V28__create_classroom_group_feed_messages.sql
+    expected_tests:
+      - ClassroomGroupFeedServiceTest#studentShouldCreateTextMessageForOwnClassroom
+      - ClassroomGroupFeedServiceTest#nonMemberStudentShouldNotListClassroomFeed
+      - ClassroomGroupFeedServiceTest#archivedClassroomShouldRejectFeedAccess
+      - ClassroomGroupFeedServiceTest#teacherShouldShareAssignedDictionary
+      - ClassroomGroupFeedServiceTest#teacherShouldNotShareUnassignedDictionary
+      - ClassroomGroupFeedServiceTest#teacherShouldShareReadyPublishedVideo
+      - ClassroomGroupFeedServiceTest#teacherShouldShareReadyPublishedSystemVideo
+      - ClassroomGroupFeedServiceTest#teacherShouldNotShareUnpublishedVideo
+      - ClassroomGroupFeedServiceTest#listMessagesShouldReturnNewestFirst
+      - ClassroomGroupFeedServiceTest#listMessagesShouldFilterByMessageType
+      - DictionaryServiceTest#findByIdVisibleToUserShouldRejectWhenCurrentPermissionIsGone
+      - DictionaryServiceTest#findAssignedDictionariesForStudentShouldIncludeDirectAndClassroomAssignments
+      - VideoAssetServiceTest#getStudentPlaybackShouldRejectUnpublishedVideo
+
+  risk:
+    level: high
+    reasons:
+      - 班级群消息流承载师生交流和学习资源入口，权限错误会泄露班级消息或资源。
+      - 资源分享依赖班级、词书、视频和学生可见性多个边界。
+
+  non_functional:
+    security:
+      - 非班级成员不得查看班级群消息流消息。
+      - 学生移出班级后必须立即失去班级群消息流访问权。
+      - 只有班级负责老师可以向班级群消息流发布词书和视频资源入口。
+      - 资源消息入口不得绕过词书和视频的当前权限校验。
+    reliability:
+      - 发布资源消息时必须在事务内完成权限校验和消息创建。
+      - 班级群消息流中的资源引用必须能稳定解析为词书或视频摘要。
+    performance:
+      - 班级群消息流必须分页查询。
+      - 消息列表应避免逐条 N+1 查询发布人和资源摘要。
+    auditability:
+      - 每条班级群消息流消息必须记录发布人、班级、消息类型和发布时间。
+
+  open_questions:
+    - 老师发布词书或视频后，是否允许删除班级群消息流消息或撤回资源分享暂未定义。
+    - 是否需要敏感词、举报或后台审核机制暂未定义。

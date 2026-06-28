@@ -9,6 +9,9 @@ import type {
     BooksImportConflictResponse,
     BooksImportJobResponse,
     ClassroomResponse,
+    ClassroomConversationResponse,
+    ClassroomGroupFeedMessageResponse,
+    ClassroomGroupFeedMessageType,
     CreateAiConfigPayload,
     CreateVideoStorageConfigPayload,
     Dictionary,
@@ -30,7 +33,8 @@ import type {
     UpdateVideoStorageConfigPayload,
     UserResponse,
     VideoAccessResponse,
-    VideoPublishStatus,
+    VideoCloudSyncResponse,
+    VideoCloudPublishStatus,
     VideoResponse,
     VideoStatus,
     VideoStorageConfigResponse,
@@ -177,6 +181,37 @@ export const api = {
         request<void>(`/api/classrooms/${classroomId}/students/${studentId}`, { method: "POST" }),
     removeStudentFromClassroom: (classroomId: number, studentId: number) =>
         request<void>(`/api/classrooms/${classroomId}/students/${studentId}`, { method: "DELETE" }),
+    listClassroomConversations: (params: { page?: number; size?: number } = {}) =>
+        request<PaginatedResponse<ClassroomConversationResponse>>(
+            `/api/classroom-conversations${buildQueryString(params)}`,
+        ),
+    listClassroomGroupFeedMessages: (
+        classroomId: number,
+        params: { page?: number; size?: number; messageType?: ClassroomGroupFeedMessageType },
+    ) =>
+        request<PaginatedResponse<ClassroomGroupFeedMessageResponse>>(
+            `/api/classrooms/${classroomId}/group-feed/messages${buildQueryString(params)}`,
+        ),
+    createClassroomGroupFeedTextMessage: (classroomId: number, payload: { content: string }) =>
+        request<ClassroomGroupFeedMessageResponse>(`/api/classrooms/${classroomId}/group-feed/messages`, {
+            method: "POST",
+            body: payload,
+        }),
+    shareClassroomGroupFeedDictionary: (classroomId: number, payload: { dictionaryId: number }) =>
+        request<ClassroomGroupFeedMessageResponse>(`/api/classrooms/${classroomId}/group-feed/dictionaries`, {
+            method: "POST",
+            body: payload,
+        }),
+    shareClassroomGroupFeedStudyPlan: (classroomId: number, payload: { studyPlanId: number }) =>
+        request<ClassroomGroupFeedMessageResponse>(`/api/classrooms/${classroomId}/group-feed/study-plans`, {
+            method: "POST",
+            body: payload,
+        }),
+    shareClassroomGroupFeedVideo: (classroomId: number, payload: { videoId: number }) =>
+        request<ClassroomGroupFeedMessageResponse>(`/api/classrooms/${classroomId}/group-feed/videos`, {
+            method: "POST",
+            body: payload,
+        }),
 
     listDictionaries: () => request<Dictionary[]>("/api/dictionaries"),
     listDictionaryEntriesPage: (
@@ -279,7 +314,7 @@ export const api = {
         size?: number;
         keyword?: string;
         status?: VideoStatus;
-        publishStatus?: VideoPublishStatus;
+        cloudPublishStatus?: VideoCloudPublishStatus;
         scopeType?: string;
     }) =>
         request<PaginatedResponse<VideoResponse>>(`/api/videos/page${buildQueryString(params)}`),
@@ -287,6 +322,7 @@ export const api = {
     uploadVideo: (formData: FormData) =>
         request<VideoResponse>("/api/videos/upload", { method: "POST", body: formData }),
     getVideoAccess: (id: number) => request<VideoAccessResponse>(`/api/videos/${id}/access`),
+    syncCloudVideos: () => request<VideoCloudSyncResponse>("/api/videos/sync/cloud", { method: "POST" }),
     syncVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}/sync`, { method: "POST" }),
     publishVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}/publish`, { method: "POST" }),
     unpublishVideo: (id: number) => request<VideoResponse>(`/api/videos/${id}/unpublish`, { method: "POST" }),

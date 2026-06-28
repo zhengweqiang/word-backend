@@ -8,6 +8,8 @@ import type {
   BooksImportConflict,
   BooksImportJob,
   Classroom,
+  ClassroomGroupFeedMessage,
+  ClassroomGroupFeedMessageType,
   CreateAiConfigPayload,
   CreateStudyPlanPayload,
   Dictionary,
@@ -28,7 +30,6 @@ import type {
   RecordStudyPayload,
   GenerateReadingPayload,
   GenerateReadingResponse,
-  StudentVideo,
   StudentAttentionDailyStat,
   StudentDashboard,
   StudentDashboardRecordPayload,
@@ -446,6 +447,26 @@ export const teacherApi = {
 
 export const studentApi = {
   getMyDictionaries: () => fetchJson<Dictionary[]>(`${API_BASE}/students/me/dictionaries`),
+  getMyClassrooms: () => fetchJson<Classroom[]>(`${API_BASE}/students/me/classrooms`),
+  listClassroomGroupFeedMessages: (
+    classroomId: number,
+    params: { page?: number; size?: number; messageType?: ClassroomGroupFeedMessageType } = {},
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('page', String(params.page ?? 1));
+    searchParams.set('size', String(params.size ?? 20));
+    if (params.messageType) {
+      searchParams.set('messageType', params.messageType);
+    }
+    return fetchJson<Page<ClassroomGroupFeedMessage>>(
+      `${API_BASE}/classrooms/${classroomId}/group-feed/messages?${searchParams.toString()}`,
+    );
+  },
+  createClassroomGroupFeedTextMessage: (classroomId: number, payload: { content: string }) =>
+    fetchJson<ClassroomGroupFeedMessage>(`${API_BASE}/classrooms/${classroomId}/group-feed/messages`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 export const studentDashboardApi = {
@@ -473,16 +494,8 @@ export const studentWordMemoryApi = {
 };
 
 export const studentVideoApi = {
-  list: (page = 1, size = 20, keyword?: string) => {
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('size', String(size));
-    if (keyword?.trim()) {
-      params.set('keyword', keyword.trim());
-    }
-    return fetchJson<Page<StudentVideo>>(`${API_BASE}/students/me/videos/page?${params.toString()}`);
-  },
-  play: (id: number) => fetchJson<VideoAccessResponse>(`${API_BASE}/students/me/videos/${id}/play`),
+  playFromClassroomFeed: (classroomId: number, videoId: number) =>
+    fetchJson<VideoAccessResponse>(`${API_BASE}/classrooms/${classroomId}/group-feed/videos/${videoId}/play`),
 };
 
 export const studyPlanApi = {

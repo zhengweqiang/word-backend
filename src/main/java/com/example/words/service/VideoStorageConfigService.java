@@ -71,6 +71,7 @@ public class VideoStorageConfigService {
         String secretKey = normalizeRequiredSecret(request.getSecretKey(), "secretKey");
         String region = normalizeRequiredText(request.getRegion(), "region", 64);
         VideoStorageProviderType providerType = request.getProviderType();
+        ensureVolcengineProvider(providerType);
         String spaceName = normalizeSpaceName(providerType, request.getSpaceName());
         String procedureName = trimToNull(request.getProcedureName());
         String remark = trimToNull(request.getRemark());
@@ -115,6 +116,7 @@ public class VideoStorageConfigService {
         String secretId = normalizeOptionalSecret(request.getSecretId());
         String secretKey = normalizeOptionalSecret(request.getSecretKey());
         VideoStorageProviderType providerType = request.getProviderType();
+        ensureVolcengineProvider(providerType);
         String spaceName = normalizeSpaceName(providerType, request.getSpaceName());
 
         if (videoStorageConfigRepository.existsByConfigNameAndIdNot(configName, id)) {
@@ -180,6 +182,7 @@ public class VideoStorageConfigService {
     public VideoStorageConfigResponse setDefault(Long id) {
         ensureAdmin();
         VideoStorageConfig config = getConfigEntity(id);
+        ensureVolcengineProvider(config.getProviderType());
         ensureEnabled(config.getStatus());
         videoStorageConfigRepository.clearDefaultByIdNot(id);
         config.setIsDefault(Boolean.TRUE);
@@ -190,13 +193,14 @@ public class VideoStorageConfigService {
     public VideoStorageConfigTestResponse test(Long id) {
         ensureAdmin();
         VideoStorageConfig config = getConfigEntity(id);
+        ensureVolcengineProvider(config.getProviderType());
         VideoStorageGateway gateway = gatewayRegistry.get(config.getProviderType());
         gateway.validate(config);
         return new VideoStorageConfigTestResponse(
                 config.getId(),
                 config.getConfigName(),
                 true,
-                "Tencent VOD connection succeeded"
+                "Volcengine VOD connection succeeded"
         );
     }
 
@@ -205,6 +209,7 @@ public class VideoStorageConfigService {
         VideoStorageConfig config = videoStorageConfigRepository.findByIsDefaultTrue()
                 .orElseThrow(() -> new BadRequestException("No default video storage config is available"));
         ensureEnabled(config.getStatus());
+        ensureVolcengineProvider(config.getProviderType());
         return config;
     }
 
@@ -230,6 +235,12 @@ public class VideoStorageConfigService {
     private void ensureEnabled(VideoStorageConfigStatus status) {
         if (status != VideoStorageConfigStatus.ENABLED) {
             throw new BadRequestException("Default video storage config must be enabled");
+        }
+    }
+
+    private void ensureVolcengineProvider(VideoStorageProviderType providerType) {
+        if (providerType != VideoStorageProviderType.VOLCENGINE_VOD) {
+            throw new BadRequestException("Tencent VOD is deprecated. Use Volcengine VOD for video storage.");
         }
     }
 

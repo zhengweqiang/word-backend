@@ -1,9 +1,10 @@
 package com.example.words.controller;
 
 import com.example.words.dto.VideoAccessResponse;
+import com.example.words.dto.VideoCloudSyncResponse;
 import com.example.words.dto.VideoResponse;
 import com.example.words.model.ResourceScopeType;
-import com.example.words.model.VideoPublishStatus;
+import com.example.words.model.VideoCloudPublishStatus;
 import com.example.words.model.VideoStatus;
 import com.example.words.service.VideoAssetService;
 import org.springframework.data.domain.Page;
@@ -36,14 +37,14 @@ public class VideoController {
             @RequestParam(defaultValue = "12") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) VideoStatus status,
-            @RequestParam(required = false) VideoPublishStatus publishStatus,
+            @RequestParam(required = false) VideoCloudPublishStatus cloudPublishStatus,
             @RequestParam(required = false) ResourceScopeType scopeType) {
         return ResponseEntity.ok(videoAssetService.listVisibleVideosPage(
                 page,
                 size,
                 keyword,
                 status,
-                publishStatus,
+                cloudPublishStatus,
                 scopeType
         ));
     }
@@ -59,6 +60,11 @@ public class VideoController {
             @RequestParam(required = false) String title,
             @RequestParam(required = false) String description) {
         return ResponseEntity.ok(videoAssetService.upload(file, title, description));
+    }
+
+    @PostMapping("/sync/cloud")
+    public ResponseEntity<VideoCloudSyncResponse> syncCloud() {
+        return ResponseEntity.ok(videoAssetService.syncDefaultCloudSpace());
     }
 
     @GetMapping("/{id}/access")

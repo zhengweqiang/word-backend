@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-solid";
+import { BookOpen, MessageSquare, Plus, Send, Video, X } from "lucide-solid";
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import { Alert } from "@/components/ui/alert";
@@ -22,7 +22,15 @@ import { PageHeader } from "@/components/shared/page-header";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { ClassroomResponse, Dictionary, PaginatedResponse, UserResponse } from "@/types/api";
+import type {
+    ClassroomGroupFeedMessageResponse,
+    ClassroomGroupFeedMessageType,
+    ClassroomResponse,
+    Dictionary,
+    PaginatedResponse,
+    UserResponse,
+    VideoResponse,
+} from "@/types/api";
 
 interface ClassroomOptionsData {
     dictionaries: Dictionary[];
@@ -31,6 +39,14 @@ interface ClassroomOptionsData {
 }
 
 const PAGE_SIZE = 20;
+const GROUP_FEED_PAGE_SIZE = 20;
+
+const groupFeedMessageTypeLabel: Record<ClassroomGroupFeedMessageType, string> = {
+    TEXT: "留言",
+    DICTIONARY: "词书",
+    STUDY_PLAN: "学习计划",
+    VIDEO: "视频",
+};
 
 const createDefaultForm = () => ({
     name: "",
@@ -41,6 +57,7 @@ const createDefaultForm = () => ({
 export function ClassroomsPage() {
     const auth = useAuth();
     const isAdmin = createMemo(() => auth.user()?.role === "ADMIN");
+    const canUseGroupFeed = createMemo(() => auth.user()?.role === "TEACHER");
     const [feedback, setFeedback] = createSignal("");
     const [createError, setCreateError] = createSignal("");
     const [isCreateDialogOpen, setIsCreateDialogOpen] = createSignal(false);
@@ -51,6 +68,12 @@ export function ClassroomsPage() {
     const [selectedClassroomId, setSelectedClassroomId] = createSignal<number | null>(null);
     const [selectedDictionaryId, setSelectedDictionaryId] = createSignal("");
     const [selectedStudentId, setSelectedStudentId] = createSignal("");
+    const [groupFeedPage, setGroupFeedPage] = createSignal(1);
+    const [groupFeedText, setGroupFeedText] = createSignal("");
+    const [groupFeedError, setGroupFeedError] = createSignal("");
+    const [groupFeedSavingKey, setGroupFeedSavingKey] = createSignal("");
+    const [selectedGroupFeedDictionaryId, setSelectedGroupFeedDictionaryId] = createSignal("");
+    const [selectedGroupFeedVideoId, setSelectedGroupFeedVideoId] = createSignal("");
     const [form, setForm] = createStore(createDefaultForm());
 
     const [optionsData] = createResource(
@@ -118,6 +141,48 @@ export function ClassroomsPage() {
         },
     );
 
+    const groupFeedParams = createMemo(() => {
+        const classroomId = selectedClassroomId();
+        if (!classroomId || !canUseGroupFeed()) {
+            return null;
+        }
+
+        return {
+            classroomId,
+            page: groupFeedPage(),
+            size: GROUP_FEED_PAGE_SIZE,
+        };
+    });
+
+    const [classroomGroupFeedMessages, { refetch: refetchGroupFeed }] = createResource(
+        groupFeedParams,
+        async (params): Promise<PaginatedResponse<ClassroomGroupFeedMessageResponse> | null> => {
+            if (!params) {
+                return null;
+            }
+            return api.listClassroomGroupFeedMessages(params.classroomId, {
+                page: params.page,
+                size: params.size,
+            });
+        },
+    );
+
+    const [shareableVideos] = createResource(
+        () => (canUseGroupFeed() ? auth.user()?.id : null),
+        async (userId): Promise<VideoResponse[]> => {
+            if (!userId) {
+                return [];
+            }
+            const videosPage = await api.listVideosPage({
+                page: 1,
+                size: 50,
+                status: "READY",
+                cloudPublishStatus: "PUBLISHED",
+            });
+            return videosPage.content;
+        },
+    );
+
     const currentClassrooms = createMemo(() => classroomsPage()?.content ?? []);
     const teacherOptions = createMemo(() => optionsData()?.teachers ?? []);
     const canCreateClassroom = createMemo(() => {
@@ -146,6 +211,8 @@ export function ClassroomsPage() {
         const end = start + current.numberOfElements - 1;
         return `第 ${start}-${end} 条，共 ${current.totalElements} 个班级`;
     });
+    const groupFeedTotalPages = createMemo(() => Math.max(1, classroomGroupFeedMessages()?.totalPages ?? 1));
+    const groupFeedMessages = createMemo(() => classroomGroupFeedMessages()?.content ?? []);
 
     createEffect(() => {
         const classrooms = currentClassrooms();
@@ -164,6 +231,11 @@ export function ClassroomsPage() {
         selectedClassroomId();
         setSelectedStudentId("");
         setSelectedDictionaryId("");
+        setGroupFeedPage(1);
+        setGroupFeedText("");
+        setGroupFeedError("");
+        setSelectedGroupFeedDictionaryId("");
+        setSelectedGroupFeedVideoId("");
     });
 
     const mutateAndRefresh = async (
@@ -180,6 +252,24 @@ export function ClassroomsPage() {
         }
         if (options?.refreshDictionaries) {
             await refetchDictionaries();
+        }
+    };
+
+    const mutateGroupFeed = async (
+        savingKey: string,
+        runner: () => Promise<unknown>,
+        successMessage: string,
+    ) => {
+        setGroupFeedError("");
+        setGroupFeedSavingKey(savingKey);
+        try {
+            await runner();
+            setFeedback(successMessage);
+            await refetchGroupFeed();
+        } catch (error) {
+            setGroupFeedError(error instanceof Error ? error.message : "班级群消息流操作失败");
+        } finally {
+            setGroupFeedSavingKey("");
         }
     };
 
@@ -221,6 +311,57 @@ export function ClassroomsPage() {
     const handleSortDirChange = (value: "asc" | "desc") => {
         setSortDir(value);
         setCurrentPage(1);
+    };
+
+    const handleCreateGroupFeedTextMessage = async (classroomId: number) => {
+        const content = groupFeedText().trim();
+        if (!content) {
+            setGroupFeedError("请输入留言内容");
+            return;
+        }
+
+        await mutateGroupFeed(
+            "text",
+            () => api.createClassroomGroupFeedTextMessage(classroomId, { content }),
+            "留言已发布。",
+        );
+        if (!groupFeedError()) {
+            setGroupFeedText("");
+        }
+    };
+
+    const handleShareGroupFeedDictionary = async (classroomId: number) => {
+        const dictionaryId = selectedGroupFeedDictionaryId();
+        if (!dictionaryId) {
+            setGroupFeedError("请选择要发布的词书");
+            return;
+        }
+
+        await mutateGroupFeed(
+            "dictionary",
+            () => api.shareClassroomGroupFeedDictionary(classroomId, { dictionaryId: Number(dictionaryId) }),
+            "词书入口已发布到班级群消息流。",
+        );
+        if (!groupFeedError()) {
+            setSelectedGroupFeedDictionaryId("");
+        }
+    };
+
+    const handleShareGroupFeedVideo = async (classroomId: number) => {
+        const videoId = selectedGroupFeedVideoId();
+        if (!videoId) {
+            setGroupFeedError("请选择要发布的视频");
+            return;
+        }
+
+        await mutateGroupFeed(
+            "video",
+            () => api.shareClassroomGroupFeedVideo(classroomId, { videoId: Number(videoId) }),
+            "视频入口已发布到班级群消息流。",
+        );
+        if (!groupFeedError()) {
+            setSelectedGroupFeedVideoId("");
+        }
     };
 
     return (
@@ -547,10 +688,195 @@ export function ClassroomsPage() {
                                                     )}
                                                 </For>
                                             </div>
-                                        </Show>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                                            </Show>
+                                        </div>
+
+                                        <div class="h-px bg-border/60" />
+
+                                        <div class="space-y-4">
+                                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                                <div class="flex items-center gap-2">
+                                                    <MessageSquare class="h-4 w-4 text-primary" />
+                                                    <p class="text-sm font-medium text-foreground">班级群消息流</p>
+                                                </div>
+                                                <Badge variant="outline">
+                                                    {classroomGroupFeedMessages()?.totalElements ?? 0} 条
+                                                </Badge>
+                                            </div>
+
+                                            <Show
+                                                when={canUseGroupFeed()}
+                                                fallback={
+                                                    <p class="rounded-lg border border-border/70 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                                                        班级群消息流由负责老师和班级学生使用。
+                                                    </p>
+                                                }
+                                            >
+                                                <div class="grid gap-3">
+                                                    <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                                                        <Textarea
+                                                            placeholder="给这个班级发布一条文字留言"
+                                                            value={groupFeedText()}
+                                                            onInput={(event) => setGroupFeedText(event.currentTarget.value)}
+                                                        />
+                                                        <Button
+                                                            disabled={groupFeedSavingKey() === "text" || !groupFeedText().trim()}
+                                                            onClick={() => void handleCreateGroupFeedTextMessage(classroom().id)}
+                                                        >
+                                                            <Send class="h-4 w-4" />
+                                                            发布留言
+                                                        </Button>
+                                                    </div>
+
+                                                    <div class="grid gap-3 lg:grid-cols-2">
+                                                        <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                                                            <select
+                                                                class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                                                value={selectedGroupFeedDictionaryId()}
+                                                                onChange={(event) =>
+                                                                    setSelectedGroupFeedDictionaryId(event.currentTarget.value)
+                                                                }
+                                                            >
+                                                                <option value="">选择班级词书发布</option>
+                                                                <For each={classroomDictionaries() || []}>
+                                                                    {(dictionaryItem) => (
+                                                                        <option value={dictionaryItem.id}>{dictionaryItem.name}</option>
+                                                                    )}
+                                                                </For>
+                                                            </select>
+                                                            <Button
+                                                                disabled={
+                                                                    groupFeedSavingKey() === "dictionary"
+                                                                    || !selectedGroupFeedDictionaryId()
+                                                                }
+                                                                variant="outline"
+                                                                onClick={() => void handleShareGroupFeedDictionary(classroom().id)}
+                                                            >
+                                                                <BookOpen class="h-4 w-4" />
+                                                                发布词书
+                                                            </Button>
+                                                        </div>
+
+                                                        <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                                                            <select
+                                                                class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                                                value={selectedGroupFeedVideoId()}
+                                                                onChange={(event) => setSelectedGroupFeedVideoId(event.currentTarget.value)}
+                                                            >
+                                                                <option value="">选择已发布视频</option>
+                                                                <For each={shareableVideos() || []}>
+                                                                    {(videoItem) => <option value={videoItem.id}>{videoItem.title}</option>}
+                                                                </For>
+                                                            </select>
+                                                            <Button
+                                                                disabled={groupFeedSavingKey() === "video" || !selectedGroupFeedVideoId()}
+                                                                variant="outline"
+                                                                onClick={() => void handleShareGroupFeedVideo(classroom().id)}
+                                                            >
+                                                                <Video class="h-4 w-4" />
+                                                                发布视频
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <Show when={groupFeedError()}>
+                                                    <Alert class="border-destructive/30 bg-destructive/10 text-destructive">
+                                                        {groupFeedError()}
+                                                    </Alert>
+                                                </Show>
+
+                                                <Show
+                                                    when={groupFeedMessages().length > 0}
+                                                    fallback={
+                                                        <p class="rounded-lg border border-border/70 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                                                            该班级还没有群消息。
+                                                        </p>
+                                                    }
+                                                >
+                                                    <div class="divide-y divide-border/60 rounded-lg border border-border/70 bg-background/60">
+                                                        <For each={groupFeedMessages()}>
+                                                            {(message) => (
+                                                                <article class="grid gap-2 px-4 py-3">
+                                                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                                                        <div class="flex items-center gap-2">
+                                                                            <Badge variant="outline">
+                                                                                {groupFeedMessageTypeLabel[message.messageType]}
+                                                                            </Badge>
+                                                                            <span class="text-sm font-medium text-foreground">
+                                                                                {message.authorName}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span class="text-xs text-muted-foreground">
+                                                                            {formatDateTime(message.createdAt)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <Show
+                                                                        when={message.messageType === "TEXT"}
+                                                                        fallback={
+                                                                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                                                <div>
+                                                                                    <p class="text-sm font-medium text-foreground">
+                                                                                        {message.resourceTitle || "未命名资源"}
+                                                                                    </p>
+                                                                                    <Show when={message.resourceSummary}>
+                                                                                        <p class="text-xs text-muted-foreground">
+                                                                                            {message.resourceSummary}
+                                                                                        </p>
+                                                                                    </Show>
+                                                                                </div>
+                                                                                <a
+                                                                                    class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background/80 px-3 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
+                                                                                    href={
+                                                                                        message.messageType === "DICTIONARY"
+                                                                                            ? "/dictionaries"
+                                                                                            : "/videos"
+                                                                                    }
+                                                                                >
+                                                                                    {message.messageType === "DICTIONARY"
+                                                                                        ? "查看词书"
+                                                                                        : "查看视频"}
+                                                                                </a>
+                                                                            </div>
+                                                                        }
+                                                                    >
+                                                                        <p class="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                                                                            {message.content}
+                                                                        </p>
+                                                                    </Show>
+                                                                </article>
+                                                            )}
+                                                        </For>
+                                                    </div>
+
+                                                    <div class="flex flex-wrap items-center justify-end gap-2">
+                                                        <Button
+                                                            disabled={groupFeedPage() === 1}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => setGroupFeedPage((page) => Math.max(1, page - 1))}
+                                                        >
+                                                            上一页
+                                                        </Button>
+                                                        <span class="min-w-[88px] text-center text-sm text-muted-foreground">
+                                                            {groupFeedPage()} / {groupFeedTotalPages()}
+                                                        </span>
+                                                        <Button
+                                                            disabled={groupFeedPage() === groupFeedTotalPages()}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() =>
+                                                                setGroupFeedPage((page) => Math.min(groupFeedTotalPages(), page + 1))
+                                                            }
+                                                        >
+                                                            下一页
+                                                        </Button>
+                                                    </div>
+                                                </Show>
+                                            </Show>
+                                        </div>
+                                    </CardContent>
+                                </Card>
                         )}
                     </Show>
                 </>

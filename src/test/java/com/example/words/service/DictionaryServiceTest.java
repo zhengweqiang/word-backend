@@ -1,6 +1,8 @@
 package com.example.words.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import com.example.words.model.AppUser;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 @ExtendWith(MockitoExtension.class)
 class DictionaryServiceTest {
@@ -59,7 +62,7 @@ class DictionaryServiceTest {
         Dictionary dictionary1 = dictionary(1L, "高考核心", ResourceScopeType.SYSTEM);
         Dictionary dictionary2 = dictionary(2L, "高考进阶", ResourceScopeType.SYSTEM);
         Dictionary dictionary3 = dictionary(3L, "阅读专项", ResourceScopeType.SYSTEM);
-        Classroom classroom = new Classroom(100L, "一班", null, 7L, null, null);
+        Classroom classroom = classroom(100L, "一班", 7L);
 
         when(dictionaryRepository.findAll()).thenReturn(List.of(dictionary1, dictionary2, dictionary3));
         when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom));
@@ -82,8 +85,8 @@ class DictionaryServiceTest {
         Dictionary dictionary1 = dictionary(1L, "高考核心", ResourceScopeType.SYSTEM);
         Dictionary dictionary2 = dictionary(2L, "高考进阶", ResourceScopeType.SYSTEM);
         Dictionary dictionary3 = dictionary(3L, "阅读专项", ResourceScopeType.SYSTEM);
-        Classroom classroom1 = new Classroom(100L, "一班", null, 7L, null, null);
-        Classroom classroom2 = new Classroom(101L, "二班", null, 7L, null, null);
+        Classroom classroom1 = classroom(100L, "一班", 7L);
+        Classroom classroom2 = classroom(101L, "二班", 7L);
 
         when(dictionaryRepository.findAll()).thenReturn(List.of(dictionary1, dictionary2, dictionary3));
         when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom1));
@@ -115,6 +118,20 @@ class DictionaryServiceTest {
         assertEquals(List.of(1L, 2L, 3L), result.stream().map(Dictionary::getId).toList());
     }
 
+    @Test
+    void findByIdVisibleToUserShouldRejectWhenCurrentPermissionIsGone() {
+        AppUser student = new AppUser();
+        student.setId(88L);
+        student.setRole(UserRole.STUDENT);
+        Dictionary dictionary = dictionary(10L, "已移除词书", ResourceScopeType.TEACHER);
+
+        when(dictionaryRepository.findById(10L)).thenReturn(Optional.of(dictionary));
+        doThrow(new AccessDeniedException("You do not have access to this dictionary"))
+                .when(accessControlService).ensureCanViewDictionary(student, dictionary);
+
+        assertTrue(dictionaryService.findByIdVisibleToUser(10L, student).isEmpty());
+    }
+
     private Dictionary dictionary(Long id, String name, ResourceScopeType scopeType) {
         Dictionary dictionary = new Dictionary();
         dictionary.setId(id);
@@ -123,5 +140,13 @@ class DictionaryServiceTest {
         dictionary.setOwnerUserId(7L);
         dictionary.setCreatedBy(7L);
         return dictionary;
+    }
+
+    private Classroom classroom(Long id, String name, Long teacherId) {
+        Classroom classroom = new Classroom();
+        classroom.setId(id);
+        classroom.setName(name);
+        classroom.setTeacherId(teacherId);
+        return classroom;
     }
 }
