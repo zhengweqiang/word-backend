@@ -46,7 +46,7 @@ export function AppShell(props: AppShellProps) {
             { href: "/videos", label: "视频资源", icon: Clapperboard, roles: ["ADMIN", "TEACHER"] },
             { href: "/video-storage", label: "视频存储", icon: Cloud, roles: ["ADMIN"] },
             { href: "/study-plans", label: "学习计划", icon: CalendarRange, roles: ["ADMIN", "TEACHER"] },
-            { href: "/imports", label: "辞书导入", icon: DatabaseZap, roles: ["ADMIN"] },
+            { href: "/imports", label: "词书导入", icon: DatabaseZap, roles: ["ADMIN"] },
         ];
 
         return items.filter((item) => auth.user() && item.roles.includes(auth.user()!.role));

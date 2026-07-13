@@ -6,7 +6,8 @@ COPY pom.xml settings.xml ./
 COPY maven-repo ./maven-repo
 COPY src ./src
 
-RUN mvn -q -s settings.xml -Dmaven.repo.local=/workspace/maven-repo -DskipTests package
+RUN env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
+    mvn -q -s settings.xml -Dmaven.repo.local=/workspace/maven-repo -DskipTests package
 
 FROM eclipse-temurin:17-jre
 

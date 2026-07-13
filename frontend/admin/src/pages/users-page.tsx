@@ -365,13 +365,13 @@ export function UsersPage() {
 
             <Show when={isCreateDialogOpen()}>
                 <div
-                    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+                    class="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/45 pt-[50px] backdrop-blur-sm"
                     onClick={closeCreateDialog}
                 >
                     <div
                         aria-labelledby="create-user-dialog-title"
                         aria-modal="true"
-                        class="w-full max-w-2xl rounded-[28px] border border-border/70 bg-background p-6 shadow-2xl"
+                        class="w-full max-w-2xl max-h-[calc(100vh-100px)] overflow-y-auto rounded-[28px] border border-border/70 bg-background p-6 shadow-2xl"
                         role="dialog"
                         onClick={(event) => event.stopPropagation()}
                     >

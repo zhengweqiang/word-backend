@@ -278,7 +278,7 @@ export function ImportCenterPage() {
     if (!isAdmin()) {
         return (
             <section class="space-y-6">
-                <PageHeader eyebrow="Imports" title="辞书导入" description="该页面仅对管理员开放。" />
+                <PageHeader eyebrow="Imports" title="词书导入" description="该页面仅对管理员开放。" />
                 <EmptyState title="没有访问权限" description="老师角色不参与辞书批量导入流程。" />
             </section>
         );
@@ -288,7 +288,7 @@ export function ImportCenterPage() {
         <section class="space-y-6">
             <PageHeader
                 eyebrow="Dictionary Import"
-                title="辞书导入"
+                title="词书导入"
                 description="从 books 目录读取文件，查看导入进度。冲突词不会阻塞其余辞书、元单词和关联发布。"
                 actions={
                     <div class="flex flex-wrap items-center gap-3">
@@ -303,7 +303,7 @@ export function ImportCenterPage() {
                         >
                             刷新
                         </Button>
-                        <Button onClick={() => void mutate(() => api.createImportBatch(), "已开始新的辞书导入。")}>
+                        <Button onClick={() => void mutate(() => api.createImportBatch(), "已开始新的词书导入。")}>
                             开始导入
                         </Button>
                     </div>
@@ -416,7 +416,7 @@ export function ImportCenterPage() {
                         <div class="rounded-2xl border border-border/70 bg-background/60 p-4">
                             <p class="text-sm font-medium text-foreground">1. 点击“开始导入”</p>
                             <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                                系统会扫描服务器上的 `books` 目录，并自动创建一个新的辞书导入批次。
+                                系统会扫描服务器上的 `books` 目录，并自动创建一个新的词书导入批次。
                             </p>
                         </div>
                         <div class="rounded-2xl border border-border/70 bg-background/60 p-4">
@@ -514,7 +514,7 @@ export function ImportCenterPage() {
                     <CardContent class="space-y-5">
                         <Show
                             when={activeJob()}
-                            fallback={<EmptyState title="还没有导入批次" description="点击右上角“开始导入”即可发起一次辞书导入。" />}
+                            fallback={<EmptyState title="还没有导入批次" description="点击右上角“开始导入”即可发起一次词书导入。" />}
                         >
                             <>
                                 <Show when={isAutoRefreshStatus(activeJob()?.status)}>

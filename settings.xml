@@ -1,25 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
-
-    <!-- 1. 配置阿里云 HTTPS 镜像（替代中央仓库） -->
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
     <mirrors>
         <mirror>
             <id>aliyunmaven</id>
-            <name>阿里云中央仓库</name>
+            <name>Aliyun Maven Public Mirror</name>
             <url>https://maven.aliyun.com/repository/public</url>
-            <mirrorOf>central</mirrorOf> <!-- 覆盖中央仓库 -->
+            <mirrorOf>*</mirrorOf>
         </mirror>
     </mirrors>
-    <!--
-      Default: use Maven Central (no global mirror override).
-      Optional: enable Aliyun mirror only when needed:
-      mvn -Paliyun ...
-    -->
+
     <profiles>
         <profile>
-            <id>aliyun</id>
+            <id>project-defaults</id>
             <activation>
                 <activeByDefault>true</activeByDefault>
             </activation>
@@ -27,55 +21,8 @@
                 <maven.artifact.threads>32</maven.artifact.threads>
                 <maven.compiler.source>17</maven.compiler.source>
                 <maven.compiler.target>17</maven.compiler.target>
-                <maven.wagon.http.ssl.insecure>true</maven.wagon.http.ssl.insecure>
-                <maven.wagon.http.ssl.allowall>true</maven.wagon.http.ssl.allowall>
-                <maven.wagon.http.ssl.ignore.validity.dates>true</maven.wagon.http.ssl.ignore.validity.dates>
                 <maven.wagon.http.retryHandler.count>5</maven.wagon.http.retryHandler.count>
             </properties>
-            <repositories>
-                <repository>
-                    <id>aliyunmaven</id>
-                    <name>Aliyun Public Repository</name>
-                    <url>http://maven.aliyun.com/repository/public</url>
-                    <releases>
-                        <enabled>true</enabled>
-                    </releases>
-                    <snapshots>
-                        <enabled>false</enabled>
-                    </snapshots>
-                </repository>
-            </repositories>
-            <pluginRepositories>
-                <pluginRepository>
-                    <id>aliyunmaven</id>
-                    <name>Aliyun Public Repository</name>
-                    <url>http://maven.aliyun.com/repository/public</url>
-                    <releases>
-                        <enabled>true</enabled>
-                    </releases>
-                    <snapshots>
-                        <enabled>false</enabled>
-                    </snapshots>
-                </pluginRepository>
-            </pluginRepositories>
         </profile>
     </profiles>
-
-    <servers>
-        <server>
-            <id>aliyun-central</id>
-            <configuration>
-                <httpConfiguration>
-                    <all>
-                        <usePreemptive>true</usePreemptive>
-                        <connectionTimeout>30000</connectionTimeout>
-                        <readTimeout>60000</readTimeout>
-                    </all>
-                </httpConfiguration>
-            </configuration>
-        </server>
-    </servers>
-
-
-
 </settings>

@@ -144,8 +144,11 @@ public class VideoAssetService {
             videoAsset.setMediaUrl(resolvePlayableUrl(uploadResult, mediaInfo));
             videoAsset.setCoverUrl(firstNonBlank(uploadResult.coverUrl(), mediaInfo.coverUrl()));
             videoAsset.setDurationSeconds(mediaInfo.durationSeconds());
-            videoAsset.setStatus(resolveStatus(storageConfig, videoAsset.getMediaUrl(), mediaInfo));
-            syncPublishStatusFromCloud(videoAsset, mediaInfo.cloudPublished(), LocalDateTime.now());
+            LocalDateTime uploadedAt = LocalDateTime.now();
+            videoAsset.setStatus(VideoStatus.READY);
+            videoAsset.setCloudPublishStatus(VideoCloudPublishStatus.PUBLISHED);
+            videoAsset.setPublishedAt(uploadedAt);
+            videoAsset.setUnpublishedAt(null);
             videoAsset.setCreatedBy(actor.getId());
             videoAsset.setOwnerUserId(actor.getId());
             videoAsset.setScopeType(actor.getRole() == UserRole.ADMIN ? ResourceScopeType.SYSTEM : ResourceScopeType.TEACHER);
@@ -241,14 +244,17 @@ public class VideoAssetService {
             return enrichResponses(List.of(videoAssetRepository.save(videoAsset)), actor).get(0);
         }
         String resolvedMediaUrl = resolvePlayableUrl(config, mediaInfo, videoAsset.getMediaUrl());
+        boolean preserveLocalPublication = isLocallyPublished(videoAsset);
         videoAsset.setMediaUrl(resolvedMediaUrl);
         videoAsset.setCoverUrl(firstNonBlank(mediaInfo.coverUrl(), videoAsset.getCoverUrl()));
         videoAsset.setDurationSeconds(mediaInfo.durationSeconds() != null
                 ? mediaInfo.durationSeconds()
                 : videoAsset.getDurationSeconds());
-        videoAsset.setStatus(resolveStatus(config, resolvedMediaUrl, mediaInfo));
-        videoAsset.setErrorMessage(trimToNull(mediaInfo.unavailableReason()));
-        if (syncsCloudPublishStatus(config)) {
+        videoAsset.setStatus(preserveLocalPublication
+                ? VideoStatus.READY
+                : resolveStatus(config, resolvedMediaUrl, mediaInfo));
+        videoAsset.setErrorMessage(preserveLocalPublication ? null : trimToNull(mediaInfo.unavailableReason()));
+        if (syncsCloudPublishStatus(config) && !preserveLocalPublication) {
             syncPublishStatusFromCloud(videoAsset, mediaInfo.cloudPublished(), LocalDateTime.now());
         }
 
@@ -357,21 +363,26 @@ public class VideoAssetService {
             videoAsset.setScopeType(ResourceScopeType.SYSTEM);
             videoAsset.setCloudPublishStatus(VideoCloudPublishStatus.UNPUBLISHED);
         }
+        boolean preserveLocalPublication = !created && isLocallyPublished(videoAsset);
 
         videoAsset.setTitle(firstNonBlank(cloudItem.title(), cloudItem.mediaId()));
         videoAsset.setDescription(trimToNull(cloudItem.description()));
         videoAsset.setOriginalFileName(firstNonBlank(cloudItem.originalFileName(), cloudItem.mediaId() + ".mp4"));
         videoAsset.setContentType(trimToNull(cloudItem.contentType()));
         videoAsset.setFileSize(cloudItem.fileSize() == null ? 0L : cloudItem.fileSize());
-        videoAsset.setMediaUrl(trimToNull(cloudItem.mediaUrl()));
+        videoAsset.setMediaUrl(firstNonBlank(trimToNull(cloudItem.mediaUrl()), videoAsset.getMediaUrl()));
         videoAsset.setCoverUrl(firstNonBlank(cloudItem.coverUrl(), videoAsset.getCoverUrl()));
         videoAsset.setDurationSeconds(cloudItem.durationSeconds() != null
                 ? cloudItem.durationSeconds()
                 : videoAsset.getDurationSeconds());
-        videoAsset.setStatus(cloudItem.ready() ? VideoStatus.READY : VideoStatus.PROCESSING);
+        videoAsset.setStatus(preserveLocalPublication || cloudItem.ready()
+                ? VideoStatus.READY
+                : VideoStatus.PROCESSING);
         videoAsset.setStorageConfigId(storageConfig.getId());
         videoAsset.setErrorMessage(null);
-        syncPublishStatusFromCloud(videoAsset, cloudItem.cloudPublished(), now);
+        if (!preserveLocalPublication) {
+            syncPublishStatusFromCloud(videoAsset, cloudItem.cloudPublished(), now);
+        }
 
         videoAssetRepository.save(videoAsset);
         return created;
@@ -394,6 +405,11 @@ public class VideoAssetService {
 
     private boolean syncsCloudPublishStatus(VideoStorageConfig config) {
         return config.getProviderType() == VideoStorageProviderType.VOLCENGINE_VOD;
+    }
+
+    private boolean isLocallyPublished(VideoAsset videoAsset) {
+        return videoAsset.getCloudPublishStatus() == VideoCloudPublishStatus.PUBLISHED
+                && videoAsset.getPublishedAt() != null;
     }
 
     private VideoResponse toResponse(
@@ -460,8 +476,7 @@ public class VideoAssetService {
                 var playableSystemVideo = criteriaBuilder.and(
                         criteriaBuilder.equal(root.get("scopeType"), ResourceScopeType.SYSTEM),
                         criteriaBuilder.equal(root.get("status"), VideoStatus.READY),
-                        criteriaBuilder.equal(root.get("cloudPublishStatus"), VideoCloudPublishStatus.PUBLISHED),
-                        criteriaBuilder.isNotNull(root.get("mediaUrl"))
+                        criteriaBuilder.equal(root.get("cloudPublishStatus"), VideoCloudPublishStatus.PUBLISHED)
                 );
                 return criteriaBuilder.or(managedByTeacher, playableSystemVideo);
             };

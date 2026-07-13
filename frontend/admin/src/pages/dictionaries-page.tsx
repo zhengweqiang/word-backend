@@ -348,7 +348,7 @@ export function DictionariesPage() {
                     <div class="flex flex-wrap items-center gap-3">
                         <Button onClick={() => setIsCreateDialogOpen(true)}>
                             <Plus class="h-4 w-4" />
-                            添加辞书
+                            添加词书
                         </Button>
                         <Button variant="outline" onClick={() => void handleRefresh()}>
                             刷新
@@ -828,20 +828,20 @@ export function DictionariesPage() {
 
             <Show when={isCreateDialogOpen()}>
                 <div
-                    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+                    class="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/45 pt-[50px] backdrop-blur-sm"
                     onClick={closeCreateDialog}
                 >
                     <div
                         aria-labelledby="create-dictionary-dialog-title"
                         aria-modal="true"
-                        class="w-full max-w-xl rounded-[28px] border border-border/70 bg-background p-6 shadow-2xl"
+                        class="w-full max-w-xl max-h-[calc(100vh-100px)] overflow-y-auto rounded-[28px] border border-border/70 bg-background p-6 shadow-2xl"
                         role="dialog"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h2 class="font-display text-2xl font-semibold tracking-tight" id="create-dictionary-dialog-title">
-                                    添加辞书
+                                    添加词书
                                 </h2>
                                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
                                     适合老师创建自己的专题词书，也适合管理员补充系统资源。

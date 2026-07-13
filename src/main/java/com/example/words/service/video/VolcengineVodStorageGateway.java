@@ -123,7 +123,7 @@ public class VolcengineVodStorageGateway implements VideoStorageGateway {
 
             VodGetPlayInfoRequest playInfoRequest = VodGetPlayInfoRequest.newBuilder()
                     .setVid(cloudMediaId)
-                    .setSsl("1")
+                    .setSsl("0")
                     .setGetAll(true)
                     .build();
             VodGetPlayInfoResponse playInfoResponse = service.getPlayInfo(playInfoRequest);
