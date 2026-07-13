@@ -22,6 +22,8 @@ import type {
     VideoStatus,
 } from "@/types/api";
 
+const toHttpPreviewUrl = (url: string) => url.replace(/^https:/i, "http:");
+
 const PAGE_SIZE = 12;
 
 const statusLabel: Record<VideoStatus, string> = {
@@ -176,7 +178,7 @@ export function VideosPage() {
                 return;
             }
             const access = await api.getVideoAccess(targetVideo.id);
-            setPreview(access);
+            setPreview({ ...access, url: toHttpPreviewUrl(access.url) });
         } catch (previewError) {
             setError(previewError instanceof Error ? previewError.message : "获取预览地址失败");
         } finally {

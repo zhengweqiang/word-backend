@@ -3,6 +3,7 @@ package com.example.words.service.video;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -16,7 +17,12 @@ import com.volcengine.service.base.model.base.ResponseMetadata;
 import com.volcengine.service.vod.IVodService;
 import com.volcengine.service.vod.model.business.VodPlayInfo;
 import com.volcengine.service.vod.model.business.VodPlayInfoModel;
+import com.volcengine.service.vod.model.business.VodGetMediaInfosData;
+import com.volcengine.service.vod.model.business.VodMediaInfo;
+import com.volcengine.service.vod.model.request.VodGetPlayInfoRequest;
 import com.volcengine.service.vod.model.request.VodUpdateMediaPublishStatusRequest;
+import com.volcengine.service.vod.model.response.VodGetMediaInfosResponse;
+import com.volcengine.service.vod.model.response.VodGetPlayInfoResponse;
 import com.volcengine.service.vod.model.response.VodUpdateMediaPublishStatusResponse;
 import java.lang.reflect.Method;
 import java.util.Base64;
@@ -82,6 +88,33 @@ class VolcengineVodStorageGatewayTest {
         verify(vodService).updateMediaPublishStatus(captor.capture());
         assertEquals("v02f81g10001", captor.getValue().getVid());
         assertEquals("Unpublished", captor.getValue().getStatus());
+    }
+
+    @Test
+    void describeMediaShouldRequestHttpPlayUrlForBrowserPreview() throws Exception {
+        IVodService vodService = mock(IVodService.class);
+        VodGetMediaInfosResponse mediaInfosResponse = VodGetMediaInfosResponse.newBuilder()
+                .setResult(VodGetMediaInfosData.newBuilder()
+                        .addMediaInfoList(VodMediaInfo.newBuilder().build())
+                        .build())
+                .build();
+        VodGetPlayInfoResponse playInfoResponse = VodGetPlayInfoResponse.newBuilder()
+                .setResult(VodPlayInfoModel.newBuilder()
+                        .addPlayInfoList(VodPlayInfo.newBuilder()
+                                .setDefinition("360p")
+                                .setMainPlayUrl("http://vedio.geniuspark.tech/video.mp4")
+                                .build())
+                        .build())
+                .build();
+        when(vodService.getMediaInfos(any())).thenReturn(mediaInfosResponse);
+        when(vodService.getPlayInfo(any())).thenReturn(playInfoResponse);
+        gateway = new VolcengineVodStorageGateway(cryptoService, region -> vodService);
+
+        gateway.describeMedia(readyConfig(), "v02f81g10001");
+
+        ArgumentCaptor<VodGetPlayInfoRequest> captor = ArgumentCaptor.forClass(VodGetPlayInfoRequest.class);
+        verify(vodService).getPlayInfo(captor.capture());
+        assertEquals("0", captor.getValue().getSsl());
     }
 
     @Test

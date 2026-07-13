@@ -105,6 +105,7 @@ describe("VideosPage", () => {
         await waitFor(() => {
             expect(api.syncVideo).toHaveBeenCalledWith(1);
             expect(api.getVideoAccess).toHaveBeenCalledWith(1);
+            expect(document.querySelector("video")?.getAttribute("src")).toBe("http://example.com/video.mp4");
         });
     });
 });

@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -173,6 +177,42 @@ class VideoAssetServiceTest {
         assertEquals(VideoCloudPublishStatus.PUBLISHED, response.getCloudPublishStatus());
         assertTrue(response.isCanManage());
         verify(volcengineStorageGateway).upload(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void uploadShouldMarkTeacherVideoReadyAndPublishedWhenCloudReportsProcessing() {
+        AppUser actor = teacher();
+        VideoStorageConfig config = defaultConfig();
+        defaultStorageConfig = config;
+
+        authenticate(actor);
+        stubUploadWithProcessingCloudMetadata(config, actor);
+
+        VideoResponse response = videoAssetService.upload(videoFile(), "Teacher lesson", "Description");
+
+        assertEquals(ResourceScopeType.TEACHER, response.getScopeType());
+        assertEquals(VideoStatus.READY, response.getStatus());
+        assertEquals(VideoCloudPublishStatus.PUBLISHED, response.getCloudPublishStatus());
+        assertTrue(response.getPublishedAt() != null);
+        assertTrue(response.isCanManage());
+    }
+
+    @Test
+    void uploadShouldMarkAdminSystemVideoReadyAndPublishedWhenCloudReportsProcessing() {
+        AppUser actor = admin();
+        VideoStorageConfig config = defaultConfig();
+        defaultStorageConfig = config;
+
+        authenticate(actor);
+        stubUploadWithProcessingCloudMetadata(config, actor);
+
+        VideoResponse response = videoAssetService.upload(videoFile(), "Admin lesson", "Description");
+
+        assertEquals(ResourceScopeType.SYSTEM, response.getScopeType());
+        assertEquals(VideoStatus.READY, response.getStatus());
+        assertEquals(VideoCloudPublishStatus.PUBLISHED, response.getCloudPublishStatus());
+        assertTrue(response.getPublishedAt() != null);
+        assertTrue(response.isCanManage());
     }
 
     @Test
@@ -368,6 +408,44 @@ class VideoAssetServiceTest {
     }
 
     @Test
+    void syncShouldKeepLocallyPublishedAdminVideoReadyWhenCloudReportsProcessing() {
+        AppUser actor = admin();
+        VideoAsset asset = video();
+        asset.setCreatedBy(actor.getId());
+        asset.setOwnerUserId(actor.getId());
+        asset.setScopeType(ResourceScopeType.SYSTEM);
+        asset.setCloudPublishStatus(VideoCloudPublishStatus.PUBLISHED);
+        asset.setPublishedAt(java.time.LocalDateTime.now());
+        VideoStorageConfig config = defaultConfig();
+        config.setProviderType(VideoStorageProviderType.VOLCENGINE_VOD);
+        resolvedStorageConfig = config;
+
+        authenticate(actor);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(volcengineStorageGateway.describeMedia(config, "file-123")).thenReturn(
+                new VideoMediaInfo(
+                        "file-123",
+                        "https://volc.example.com/video.mp4",
+                        "https://volc.example.com/cover.jpg",
+                        90L,
+                        false,
+                        false,
+                        false,
+                        null
+                )
+        );
+        when(videoAssetRepository.save(any(VideoAsset.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(appUserRepository.findAllById(any())).thenReturn(List.of(actor));
+        when(videoStorageConfigRepository.findAllById(any())).thenReturn(List.of(config));
+
+        VideoResponse response = videoAssetService.sync(asset.getId());
+
+        assertEquals(VideoStatus.READY, response.getStatus());
+        assertEquals(VideoCloudPublishStatus.PUBLISHED, response.getCloudPublishStatus());
+        assertTrue(response.getPublishedAt() != null);
+    }
+
+    @Test
     void syncShouldMarkVideoFailedAndClearUrlWhenCloudMediaIsMissing() {
         AppUser actor = teacher();
         VideoAsset asset = video();
@@ -481,6 +559,46 @@ class VideoAssetServiceTest {
     }
 
     @Test
+    void syncDefaultCloudSpaceShouldKeepPublishedVideoReadyWhenCloudReportsProcessing() {
+        AppUser actor = admin();
+        VideoStorageConfig config = defaultConfig();
+        config.setProviderType(VideoStorageProviderType.VOLCENGINE_VOD);
+        defaultStorageConfig = config;
+        VideoAsset existing = video();
+        existing.setTencentFileId("vid-existing");
+        existing.setScopeType(ResourceScopeType.SYSTEM);
+        existing.setCreatedBy(actor.getId());
+        existing.setOwnerUserId(actor.getId());
+        existing.setCloudPublishStatus(VideoCloudPublishStatus.PUBLISHED);
+        existing.setPublishedAt(java.time.LocalDateTime.now());
+
+        authenticate(actor);
+        when(volcengineStorageGateway.listMedia(config, 0, 100)).thenReturn(List.of(
+                new VideoCloudMediaItem(
+                        "vid-existing",
+                        "Cloud title",
+                        null,
+                        "cloud-existing.mp4",
+                        "video/mp4",
+                        4096L,
+                        "https://volc.example.com/cloud-existing.mp4",
+                        null,
+                        120L,
+                        false,
+                        false
+                )
+        ));
+        when(videoAssetRepository.findByTencentFileId("vid-existing")).thenReturn(Optional.of(existing));
+        when(videoAssetRepository.save(any(VideoAsset.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        videoAssetService.syncDefaultCloudSpace();
+
+        assertEquals(VideoStatus.READY, existing.getStatus());
+        assertEquals(VideoCloudPublishStatus.PUBLISHED, existing.getCloudPublishStatus());
+        assertTrue(existing.getPublishedAt() != null);
+    }
+
+    @Test
     void syncDefaultCloudSpaceShouldRejectTeacher() {
         authenticate(teacher());
 
@@ -560,6 +678,42 @@ class VideoAssetServiceTest {
         assertEquals(VideoCloudPublishStatus.PUBLISHED, page.getContent().get(0).getCloudPublishStatus());
     }
 
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void listVisibleVideosPageShouldNotRequireMediaUrlForPublishedSystemVideo() {
+        AppUser actor = teacher();
+        ArgumentCaptor<org.springframework.data.jpa.domain.Specification<VideoAsset>> specificationCaptor =
+                ArgumentCaptor.forClass(org.springframework.data.jpa.domain.Specification.class);
+
+        authenticate(actor);
+        when(videoAssetRepository.findAll(
+                specificationCaptor.capture(),
+                any(org.springframework.data.domain.Pageable.class)
+        )).thenReturn(new PageImpl<>(List.of()));
+
+        videoAssetService.listVisibleVideosPage(
+                1,
+                10,
+                null,
+                null,
+                VideoCloudPublishStatus.PUBLISHED,
+                ResourceScopeType.SYSTEM
+        );
+
+        jakarta.persistence.criteria.Root<VideoAsset> root = mock(jakarta.persistence.criteria.Root.class);
+        jakarta.persistence.criteria.Path<Object> property = mock(jakarta.persistence.criteria.Path.class);
+        jakarta.persistence.criteria.CriteriaBuilder criteriaBuilder = mock(jakarta.persistence.criteria.CriteriaBuilder.class);
+        doReturn(property).when(root).get(anyString());
+
+        specificationCaptor.getValue().toPredicate(
+                root,
+                mock(jakarta.persistence.criteria.CriteriaQuery.class),
+                criteriaBuilder
+        );
+
+        verify(criteriaBuilder, never()).isNotNull(property);
+    }
+
     private AppUser teacher() {
         AppUser actor = new AppUser();
         actor.setId(7L);
@@ -616,6 +770,40 @@ class VideoAssetServiceTest {
         asset.setScopeType(ResourceScopeType.TEACHER);
         asset.setStorageConfigId(3L);
         return asset;
+    }
+
+    private MockMultipartFile videoFile() {
+        return new MockMultipartFile("file", "lesson.mp4", "video/mp4", "video-bytes".getBytes());
+    }
+
+    private void stubUploadWithProcessingCloudMetadata(VideoStorageConfig config, AppUser actor) {
+        when(volcengineStorageGateway.upload(any(), any(), any(), any(), any())).thenReturn(
+                new VideoUploadResult(
+                        "file-123",
+                        "https://vod.example.com/lesson.mp4",
+                        "https://vod.example.com/cover.jpg",
+                        false
+                )
+        );
+        when(volcengineStorageGateway.describeMedia(config, "file-123")).thenReturn(
+                new VideoMediaInfo(
+                        "file-123",
+                        "https://vod.example.com/lesson.mp4",
+                        "https://vod.example.com/cover.jpg",
+                        120L,
+                        false,
+                        false,
+                        false,
+                        null
+                )
+        );
+        when(videoAssetRepository.save(any(VideoAsset.class))).thenAnswer(invocation -> {
+            VideoAsset asset = invocation.getArgument(0);
+            asset.setId(55L);
+            return asset;
+        });
+        when(appUserRepository.findAllById(any())).thenReturn(List.of(actor));
+        when(videoStorageConfigRepository.findAllById(any())).thenReturn(List.of(config));
     }
 
     private void authenticate(AppUser actor) {
