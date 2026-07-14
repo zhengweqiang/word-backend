@@ -28,11 +28,20 @@ vi.mock("@/lib/api", () => ({
         createClassroomGroupFeedTextMessage: vi.fn(),
         shareClassroomGroupFeedDictionary: vi.fn(),
         shareClassroomGroupFeedVideo: vi.fn(),
+        getClassroomGroupFeedVideoPlayback: vi.fn(),
         assignDictionariesToClassroom: vi.fn(),
         removeDictionaryFromClassroom: vi.fn(),
         addStudentToClassroom: vi.fn(),
         removeStudentFromClassroom: vi.fn(),
     },
+}));
+
+vi.mock("@volcengine/veplayer", () => ({
+    default: vi.fn().mockImplementation(function () {
+        return {
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+    }),
 }));
 
 vi.mock("@/features/auth/auth-context", () => ({
@@ -158,6 +167,23 @@ describe("ClassroomsPage", () => {
         });
     });
 
+    it("keeps classroom list filters on one line with spacing between labels and controls", async () => {
+        render(() => <ClassroomsPage />);
+
+        expect(await screen.findByText("班级列表")).toBeInTheDocument();
+
+        const filters = screen.getByTestId("classroom-list-filters");
+        expect(filters).toHaveClass("flex");
+        expect(filters).toHaveClass("items-center");
+        expect(filters).toHaveClass("gap-x-8");
+
+        const searchField = screen.getByText("搜索").closest("[data-testid='classroom-filter-field']");
+        expect(searchField).toHaveClass("flex");
+        expect(searchField).toHaveClass("items-center");
+        expect(searchField).toHaveClass("gap-3");
+        expect(searchField).toContainElement(screen.getByPlaceholderText("按班级名称或描述搜索"));
+    });
+
     it("shows the classroom group feed and lets a teacher post a text message", async () => {
         authUser.current = {
             id: 2,
@@ -262,6 +288,139 @@ describe("ClassroomsPage", () => {
             expect(api.createClassroomGroupFeedTextMessage).toHaveBeenCalledWith(31, {
                 content: "今天先完成第 1 单元。",
             });
+        });
+    });
+
+    it("opens a classroom video message in the shared preview player", async () => {
+        authUser.current = {
+            id: 2,
+            username: "teacher",
+            displayName: "Teacher",
+            role: "TEACHER",
+            status: "ACTIVE",
+        };
+        vi.mocked(api.listClassroomsPage).mockResolvedValue({
+            content: [
+                {
+                    id: 31,
+                    name: "Class A",
+                    teacherId: 2,
+                    teacherName: "Teacher",
+                    studentCount: 18,
+                },
+            ],
+            totalElements: 1,
+            totalPages: 1,
+            number: 0,
+            size: 20,
+            numberOfElements: 1,
+        });
+        vi.mocked(api.listClassroomGroupFeedMessages).mockResolvedValue({
+            content: [
+                {
+                    id: 102,
+                    classroomId: 31,
+                    messageType: "VIDEO",
+                    resourceId: 6,
+                    resourceTitle: "Classroom video",
+                    resourceSummary: "Video summary",
+                    authorUserId: 2,
+                    authorName: "Teacher",
+                    createdAt: "2026-06-26T08:25:00",
+                },
+            ],
+            totalElements: 1,
+            totalPages: 1,
+            number: 0,
+            size: 20,
+            numberOfElements: 1,
+        });
+        vi.mocked(api.getClassroomGroupFeedVideoPlayback).mockResolvedValue({
+            videoId: 6,
+            mode: "PLAY",
+            url: "https://example.com/classroom-video.mp4",
+        });
+
+        render(() => <ClassroomsPage />);
+
+        expect(await screen.findByText("Classroom video")).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId("classroom-video-preview-102"));
+
+        await waitFor(() => {
+            expect(api.getClassroomGroupFeedVideoPlayback).toHaveBeenCalledWith(31, 6);
+            const previewOverlay = screen.getByText("Preview").closest(".fixed") as HTMLElement | null;
+            expect(previewOverlay).toHaveClass("items-center");
+            expect(previewOverlay).toHaveClass("py-6");
+            expect(previewOverlay).not.toHaveClass("items-start");
+            expect(screen.getByTestId("veplayer-preview")).toHaveAttribute(
+                "data-url",
+                "https://example.com/classroom-video.mp4",
+            );
+        });
+    });
+
+    it("renders the classroom video preview outside the blurred shell content so it centers in the viewport", async () => {
+        authUser.current = {
+            id: 2,
+            username: "teacher",
+            displayName: "Teacher",
+            role: "TEACHER",
+            status: "ACTIVE",
+        };
+        vi.mocked(api.listClassroomsPage).mockResolvedValue({
+            content: [
+                {
+                    id: 31,
+                    name: "Class A",
+                    teacherId: 2,
+                    teacherName: "Teacher",
+                    studentCount: 18,
+                },
+            ],
+            totalElements: 1,
+            totalPages: 1,
+            number: 0,
+            size: 20,
+            numberOfElements: 1,
+        });
+        vi.mocked(api.listClassroomGroupFeedMessages).mockResolvedValue({
+            content: [
+                {
+                    id: 102,
+                    classroomId: 31,
+                    messageType: "VIDEO",
+                    resourceId: 6,
+                    resourceTitle: "Classroom video",
+                    authorUserId: 2,
+                    authorName: "Teacher",
+                    createdAt: "2026-06-26T08:25:00",
+                },
+            ],
+            totalElements: 1,
+            totalPages: 1,
+            number: 0,
+            size: 20,
+            numberOfElements: 1,
+        });
+        vi.mocked(api.getClassroomGroupFeedVideoPlayback).mockResolvedValue({
+            videoId: 6,
+            mode: "PLAY",
+            url: "https://example.com/classroom-video.mp4",
+        });
+
+        render(() => (
+            <main class="backdrop-blur" data-testid="shell-content">
+                <ClassroomsPage />
+            </main>
+        ));
+
+        expect(await screen.findByText("Classroom video")).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId("classroom-video-preview-102"));
+
+        await waitFor(() => {
+            const previewOverlay = screen.getByText("Preview").closest(".fixed") as HTMLElement | null;
+            expect(previewOverlay).not.toBeNull();
+            expect(screen.getByTestId("shell-content")).not.toContainElement(previewOverlay);
         });
     });
 });

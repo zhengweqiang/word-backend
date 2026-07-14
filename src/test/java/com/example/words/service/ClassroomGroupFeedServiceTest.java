@@ -32,6 +32,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
@@ -69,6 +71,9 @@ class ClassroomGroupFeedServiceTest {
     @Mock
     private AppUserRepository appUserRepository;
 
+    @Mock
+    private VideoAssetService videoAssetService;
+
     private ClassroomGroupFeedService service;
 
     @BeforeEach
@@ -83,7 +88,8 @@ class ClassroomGroupFeedServiceTest {
                 studyPlanRepository,
                 studyPlanClassroomRepository,
                 accessControlService,
-                appUserRepository
+                appUserRepository,
+                videoAssetService
         );
     }
 
@@ -173,6 +179,59 @@ class ClassroomGroupFeedServiceTest {
         assertThat(response.getResourceId()).isEqualTo(30L);
     }
 
+    @Test
+    void listMessagesShouldHideVideoMessagesWhoseVideoWasDeleted() {
+        AppUser teacher = user(7L, "Teacher", UserRole.TEACHER);
+        Classroom classroom = classroom(100L, 7L);
+        ClassroomGroupFeedMessage existingVideoMessage = message(
+                501L,
+                ClassroomGroupFeedMessageType.VIDEO,
+                30L,
+                "Existing video"
+        );
+        ClassroomGroupFeedMessage deletedVideoMessage = message(
+                502L,
+                ClassroomGroupFeedMessageType.VIDEO,
+                31L,
+                "Deleted video"
+        );
+        ClassroomGroupFeedMessage textMessage = message(
+                503L,
+                ClassroomGroupFeedMessageType.TEXT,
+                null,
+                null
+        );
+        textMessage.setContent("Hello class");
+
+        when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom));
+        when(classroomGroupFeedMessageRepository.findByClassroomIdOrderByCreatedAtDesc(
+                100L,
+                PageRequest.of(0, 20)
+        )).thenReturn(new PageImpl<>(
+                List.of(existingVideoMessage, deletedVideoMessage, textMessage),
+                PageRequest.of(0, 20),
+                3
+        ));
+        when(videoAssetRepository.findAllById(List.of(30L, 31L))).thenReturn(List.of(readyPublishedVideo(30L)));
+        when(appUserRepository.findAllById(List.of(7L))).thenReturn(List.of(teacher));
+
+        List<ClassroomGroupFeedMessageResponse> responses = service.listMessages(
+                100L,
+                1,
+                20,
+                null,
+                teacher
+        ).getContent();
+
+        assertThat(responses)
+                .extracting(ClassroomGroupFeedMessageResponse::getResourceTitle)
+                .contains("Existing video")
+                .doesNotContain("Deleted video");
+        assertThat(responses)
+                .extracting(ClassroomGroupFeedMessageResponse::getContent)
+                .contains("Hello class");
+    }
+
     private AppUser user(Long id, String displayName, UserRole role) {
         AppUser user = new AppUser();
         user.setId(id);
@@ -210,5 +269,20 @@ class ClassroomGroupFeedServiceTest {
         video.setScopeType(ResourceScopeType.SYSTEM);
         video.setStorageConfigId(1L);
         return video;
+    }
+
+    private ClassroomGroupFeedMessage message(
+            Long id,
+            ClassroomGroupFeedMessageType messageType,
+            Long resourceId,
+            String resourceTitle) {
+        ClassroomGroupFeedMessage message = new ClassroomGroupFeedMessage();
+        message.setId(id);
+        message.setClassroomId(100L);
+        message.setAuthorUserId(7L);
+        message.setMessageType(messageType);
+        message.setResourceId(resourceId);
+        message.setResourceTitle(resourceTitle);
+        return message;
     }
 }

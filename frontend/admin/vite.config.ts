@@ -4,7 +4,7 @@ import solid from "vite-plugin-solid";
 
 export default defineConfig({
   base: "/admin/",
-  plugins: [solid()],
+  plugins: [solid({ hot: process.env.NODE_ENV !== "test" })],
   test: {
     environment: "jsdom",
     globals: true,

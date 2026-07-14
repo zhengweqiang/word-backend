@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { VePlayerPreview } from "@/components/videos/veplayer-preview";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api";
 import { compactFileSize, formatDateTime } from "@/lib/format";
@@ -21,8 +22,6 @@ import type {
     VideoResponse,
     VideoStatus,
 } from "@/types/api";
-
-const toHttpPreviewUrl = (url: string) => url.replace(/^https:/i, "http:");
 
 const PAGE_SIZE = 12;
 
@@ -178,7 +177,7 @@ export function VideosPage() {
                 return;
             }
             const access = await api.getVideoAccess(targetVideo.id);
-            setPreview({ ...access, url: toHttpPreviewUrl(access.url) });
+            setPreview(access);
         } catch (previewError) {
             setError(previewError instanceof Error ? previewError.message : "获取预览地址失败");
         } finally {
@@ -429,19 +428,32 @@ export function VideosPage() {
                                     {(video) => (
                                         <Card class="border-border/70 bg-background/80">
                                             <CardContent class="space-y-4 p-5">
-                                                <div class="flex items-start justify-between gap-4">
-                                                    <div class="space-y-1">
-                                                        <p class="font-medium text-foreground">{video.title}</p>
-                                                        <p class="text-xs text-muted-foreground">{video.originalFileName}</p>
+                                                <div class="min-w-0 space-y-1">
+                                                    <div class="flex min-w-0 items-center justify-between gap-3">
+                                                        <p
+                                                            class="min-w-0 max-w-[70%] truncate font-medium text-foreground"
+                                                            title={video.title}
+                                                        >
+                                                            {video.title}
+                                                        </p>
+                                                        <div
+                                                            class="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap"
+                                                            data-testid={`video-status-badges-${video.id}`}
+                                                        >
+                                                            <Badge variant={statusVariant(video.status)}>
+                                                                {statusLabel[video.status]}
+                                                            </Badge>
+                                                            <Badge variant={cloudPublishStatusVariant(video.cloudPublishStatus)}>
+                                                                {cloudPublishStatusLabel[video.cloudPublishStatus]}
+                                                            </Badge>
+                                                        </div>
                                                     </div>
-                                                    <div class="flex flex-wrap justify-end gap-2">
-                                                        <Badge variant={statusVariant(video.status)}>
-                                                            {statusLabel[video.status]}
-                                                        </Badge>
-                                                        <Badge variant={cloudPublishStatusVariant(video.cloudPublishStatus)}>
-                                                            {cloudPublishStatusLabel[video.cloudPublishStatus]}
-                                                        </Badge>
-                                                    </div>
+                                                    <p
+                                                        class="max-w-[90%] truncate text-xs text-muted-foreground"
+                                                        title={video.originalFileName}
+                                                    >
+                                                        {video.originalFileName}
+                                                    </p>
                                                 </div>
 
                                                 <Show when={video.description}>
@@ -548,7 +560,7 @@ export function VideosPage() {
             </div>
 
             <Show when={preview()}>
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 py-8">
+                <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/75 px-4 pb-8 pt-16 md:pt-20">
                     <div class="w-full max-w-5xl rounded-[28px] border border-white/10 bg-slate-950 p-4 shadow-2xl">
                         <div class="mb-4 flex items-center justify-between gap-4">
                             <div>
@@ -564,13 +576,7 @@ export function VideosPage() {
                                 关闭
                             </Button>
                         </div>
-                        <video
-                            class="max-h-[70vh] w-full rounded-2xl bg-black"
-                            controls
-                            autoplay
-                            poster={preview()?.coverUrl ?? undefined}
-                            src={preview()?.url}
-                        />
+                        <VePlayerPreview url={preview()!.url} coverUrl={preview()?.coverUrl} />
                     </div>
                 </div>
             </Show>

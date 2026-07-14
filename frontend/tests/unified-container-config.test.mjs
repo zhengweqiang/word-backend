@@ -5,7 +5,7 @@ import test from 'node:test';
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
 test('docker compose exposes only one frontend container on localhost 8083', () => {
-  const compose = read('docker-compose.yml');
+  const compose = read('docker-compose.yml').replace(/\r\n/g, '\n');
 
   assert.match(compose, /frontend:\n[\s\S]*?ports:\n\s+- "8083:80"/);
   assert.doesNotMatch(compose, /\n\s+admin-frontend:/);

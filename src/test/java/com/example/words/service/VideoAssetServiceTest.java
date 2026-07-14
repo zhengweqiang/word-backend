@@ -623,14 +623,59 @@ class VideoAssetServiceTest {
         AppUser actor = teacher();
         VideoAsset asset = video();
         asset.setCloudPublishStatus(VideoCloudPublishStatus.PUBLISHED);
+        VideoStorageConfig config = defaultConfig();
+        resolvedStorageConfig = config;
 
         authenticate(actor);
         when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(volcengineStorageGateway.describeMedia(config, "file-123")).thenReturn(
+                new VideoMediaInfo(
+                        "file-123",
+                        "https://vod.example.com/video.mp4",
+                        "https://vod.example.com/cover.jpg",
+                        120L,
+                        true,
+                        true,
+                        true,
+                        null
+                )
+        );
 
         VideoAccessResponse response = videoAssetService.getAccess(asset.getId());
 
         assertEquals(VideoAccessMode.PREVIEW, response.getMode());
         assertEquals("https://vod.example.com/video.mp4", response.getUrl());
+    }
+
+    @Test
+    void getAccessShouldRefreshSignedPlaybackUrlBeforePreview() {
+        AppUser actor = teacher();
+        VideoAsset asset = video();
+        asset.setMediaUrl("https://vod.example.com/expired.mp4?auth_key=expired");
+        asset.setCloudPublishStatus(VideoCloudPublishStatus.PUBLISHED);
+        VideoStorageConfig config = defaultConfig();
+        resolvedStorageConfig = config;
+
+        authenticate(actor);
+        when(videoAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(volcengineStorageGateway.describeMedia(config, "file-123")).thenReturn(
+                new VideoMediaInfo(
+                        "file-123",
+                        "https://vod.example.com/fresh.mp4?auth_key=fresh",
+                        "https://vod.example.com/fresh-cover.jpg",
+                        120L,
+                        true,
+                        true,
+                        true,
+                        null
+                )
+        );
+
+        VideoAccessResponse response = videoAssetService.getAccess(asset.getId());
+
+        assertEquals(VideoAccessMode.PREVIEW, response.getMode());
+        assertEquals("https://vod.example.com/fresh.mp4?auth_key=fresh", response.getUrl());
+        assertEquals("https://vod.example.com/fresh-cover.jpg", response.getCoverUrl());
     }
 
     @Test

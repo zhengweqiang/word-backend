@@ -20,9 +20,18 @@ vi.mock("@/lib/api", () => ({
         createClassroomGroupFeedTextMessage: vi.fn(),
         shareClassroomGroupFeedStudyPlan: vi.fn(),
         shareClassroomGroupFeedVideo: vi.fn(),
+        getClassroomGroupFeedVideoPlayback: vi.fn(),
         listStudyPlans: vi.fn(),
         listVideosPage: vi.fn(),
     },
+}));
+
+vi.mock("@volcengine/veplayer", () => ({
+    default: vi.fn().mockImplementation(function () {
+        return {
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+    }),
 }));
 
 vi.mock("@/features/auth/auth-context", () => ({
@@ -286,6 +295,59 @@ describe("TeacherClassChatPage", () => {
         expect(await screen.findByText("待处理课堂视频 · 处理中 · 云端停用")).toBeInTheDocument();
         expect(screen.getByText("视频需要同步到可预览并启用云端播放后，才能分享到班级。")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "分享视频" })).toBeDisabled();
+    });
+
+    it("opens a classroom chat video message in the shared preview player", async () => {
+        vi.mocked(api.listClassroomGroupFeedMessages).mockResolvedValue({
+            content: [
+                {
+                    id: 505,
+                    classroomId: 101,
+                    messageType: "VIDEO",
+                    resourceId: 30,
+                    resourceTitle: "Classroom chat video",
+                    resourceSummary: "Video summary",
+                    authorUserId: 7,
+                    authorName: "Teacher",
+                    createdAt: "2026-07-14T11:31:00",
+                },
+            ],
+            totalElements: 1,
+            totalPages: 1,
+            number: 0,
+            size: 20,
+            numberOfElements: 1,
+        });
+        vi.mocked(api.getClassroomGroupFeedVideoPlayback).mockResolvedValue({
+            videoId: 30,
+            mode: "PLAY",
+            url: "https://example.com/classroom-chat-video.mp4",
+        });
+
+        render(() => <TeacherClassChatPage />);
+
+        expect(await screen.findByText("Classroom chat video")).toBeInTheDocument();
+        const messageHeader = screen.getByTestId("class-chat-message-header-505");
+        expect(messageHeader).toHaveClass("justify-between");
+        expect(screen.getByTestId("class-chat-message-time-505")).toHaveClass("ml-auto");
+        expect(screen.getByTestId("class-chat-message-time-505")).toHaveClass("text-right");
+
+        const previewButtonRow = screen.getByTestId("class-chat-video-preview-row-505");
+        expect(previewButtonRow).toHaveClass("justify-end");
+        const previewButton = screen.getByTestId("class-chat-video-preview-505");
+        expect(previewButton).toHaveClass("h-7");
+        expect(previewButton).toHaveClass("px-2");
+        expect(previewButton).toHaveClass("text-xs");
+        expect(previewButton).toHaveClass("border-border/70");
+        fireEvent.click(screen.getByTestId("class-chat-video-preview-505"));
+
+        await waitFor(() => {
+            expect(api.getClassroomGroupFeedVideoPlayback).toHaveBeenCalledWith(101, 30);
+            expect(screen.getByTestId("veplayer-preview")).toHaveAttribute(
+                "data-url",
+                "https://example.com/classroom-chat-video.mp4",
+            );
+        });
     });
 
     it("polls conversations and current messages every 30 seconds", async () => {

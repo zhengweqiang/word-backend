@@ -219,11 +219,16 @@ public class VideoAssetService {
         if (!isPlayable(videoAsset)) {
             throw new BadRequestException("Video is not ready for preview");
         }
+        return buildAccessResponse(videoAsset, VideoAccessMode.PREVIEW);
+    }
+
+    public VideoAccessResponse buildAccessResponse(VideoAsset videoAsset, VideoAccessMode mode) {
+        AccessMedia accessMedia = resolveAccessMedia(videoAsset);
         return new VideoAccessResponse(
                 videoAsset.getId(),
-                VideoAccessMode.PREVIEW,
-                videoAsset.getMediaUrl(),
-                videoAsset.getCoverUrl()
+                mode,
+                accessMedia.mediaUrl(),
+                accessMedia.coverUrl()
         );
     }
 
@@ -523,6 +528,32 @@ public class VideoAssetService {
                 && trimToNull(videoAsset.getMediaUrl()) != null;
     }
 
+    private AccessMedia resolveAccessMedia(VideoAsset videoAsset) {
+        String cloudMediaId = trimToNull(videoAsset.getTencentFileId());
+        if (videoAsset.getStorageConfigId() == null || cloudMediaId == null) {
+            return new AccessMedia(videoAsset.getMediaUrl(), videoAsset.getCoverUrl());
+        }
+
+        VideoStorageConfig config = videoStorageConfigService.getConfigEntity(videoAsset.getStorageConfigId());
+        VideoStorageGateway gateway = gatewayRegistry.get(config.getProviderType());
+        VideoMediaInfo mediaInfo = gateway.describeMedia(config, cloudMediaId);
+        if (mediaInfo.cloudMediaMissing()) {
+            throw new BadRequestException(firstNonBlank(
+                    mediaInfo.unavailableReason(),
+                    "Cloud video media no longer exists"
+            ));
+        }
+
+        String mediaUrl = resolvePlayableUrl(config, mediaInfo, null);
+        if (trimToNull(mediaUrl) == null) {
+            throw new BadRequestException(firstNonBlank(
+                    mediaInfo.unavailableReason(),
+                    "Video playback URL is not ready"
+            ));
+        }
+        return new AccessMedia(mediaUrl, firstNonBlank(mediaInfo.coverUrl(), videoAsset.getCoverUrl()));
+    }
+
     private void validateUpload(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Video file is required");
@@ -626,5 +657,8 @@ public class VideoAssetService {
     private String firstNonBlank(String primary, String secondary) {
         String normalizedPrimary = trimToNull(primary);
         return normalizedPrimary != null ? normalizedPrimary : trimToNull(secondary);
+    }
+
+    private record AccessMedia(String mediaUrl, String coverUrl) {
     }
 }

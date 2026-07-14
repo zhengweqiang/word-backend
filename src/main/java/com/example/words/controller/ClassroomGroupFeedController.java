@@ -88,7 +88,7 @@ public class ClassroomGroupFeedController {
     }
 
     @GetMapping("/videos/{videoId}/play")
-    @PreAuthorize("hasRole('STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public ResponseEntity<VideoAccessResponse> playVideo(
             @PathVariable Long classroomId,
             @PathVariable Long videoId) {

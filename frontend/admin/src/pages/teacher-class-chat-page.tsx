@@ -1,4 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
+import { Portal } from "solid-js/web";
+import { X } from "lucide-solid";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { VePlayerPreview } from "@/components/videos/veplayer-preview";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -15,6 +18,7 @@ import type {
     ClassroomGroupFeedMessageResponse,
     PaginatedResponse,
     StudyPlanResponse,
+    VideoAccessResponse,
     VideoResponse,
 } from "@/types/api";
 
@@ -82,6 +86,8 @@ export function TeacherClassChatPage() {
     const [feedback, setFeedback] = createSignal("");
     const [error, setError] = createSignal("");
     const [saving, setSaving] = createSignal(false);
+    const [previewSavingKey, setPreviewSavingKey] = createSignal("");
+    const [videoPreview, setVideoPreview] = createSignal<VideoAccessResponse | null>(null);
 
     const [conversationsPage, { refetch: refetchConversations }] = createResource(
         () => auth.user()?.id,
@@ -265,6 +271,24 @@ export function TeacherClassChatPage() {
         );
     };
 
+    const previewVideoMessage = async (message: ClassroomGroupFeedMessageResponse) => {
+        if (!message.resourceId) {
+            setError("视频资源不存在");
+            return;
+        }
+
+        setPreviewSavingKey(`preview-video-${message.id}`);
+        setError("");
+        try {
+            const access = await api.getClassroomGroupFeedVideoPlayback(message.classroomId, message.resourceId);
+            setVideoPreview(access);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "获取视频预览地址失败");
+        } finally {
+            setPreviewSavingKey("");
+        }
+    };
+
     return (
         <section class="space-y-6">
             <PageHeader
@@ -353,10 +377,20 @@ export function TeacherClassChatPage() {
                                     <For each={messages()}>
                                         {(message) => (
                                             <article class="rounded-lg border border-border/70 bg-white px-4 py-3 shadow-sm">
-                                                <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                    <Badge variant="outline">{messageTypeLabel(message)}</Badge>
-                                                    <span>{message.authorName}</span>
-                                                    <span>{message.createdAt ? formatDateTime(message.createdAt) : ""}</span>
+                                                <div
+                                                    class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+                                                    data-testid={`class-chat-message-header-${message.id}`}
+                                                >
+                                                    <div class="flex flex-wrap items-center gap-2">
+                                                        <Badge variant="outline">{messageTypeLabel(message)}</Badge>
+                                                        <span>{message.authorName}</span>
+                                                    </div>
+                                                    <span
+                                                        class="ml-auto text-right"
+                                                        data-testid={`class-chat-message-time-${message.id}`}
+                                                    >
+                                                        {message.createdAt ? formatDateTime(message.createdAt) : ""}
+                                                    </span>
                                                 </div>
                                                 <Show
                                                     when={message.messageType === "TEXT"}
@@ -368,6 +402,25 @@ export function TeacherClassChatPage() {
                                                             <h3 class="mt-1 font-semibold">{message.resourceTitle ?? "未命名资源"}</h3>
                                                             <Show when={message.resourceSummary}>
                                                                 <p class="mt-1 text-sm text-muted-foreground">{message.resourceSummary}</p>
+                                                            </Show>
+                                                            <Show when={message.messageType === "VIDEO"}>
+                                                                <div
+                                                                    class="mt-3 flex justify-end"
+                                                                    data-testid={`class-chat-video-preview-row-${message.id}`}
+                                                                >
+                                                                    <Button
+                                                                        class="h-7 border-border/70 px-2 text-xs"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        disabled={previewSavingKey() === `preview-video-${message.id}`}
+                                                                        data-testid={`class-chat-video-preview-${message.id}`}
+                                                                        onClick={() => void previewVideoMessage(message)}
+                                                                    >
+                                                                        {previewSavingKey() === `preview-video-${message.id}`
+                                                                            ? "读取中..."
+                                                                            : "查看视频"}
+                                                                    </Button>
+                                                                </div>
                                                             </Show>
                                                         </div>
                                                     }
@@ -520,6 +573,33 @@ export function TeacherClassChatPage() {
                         </div>
                     </aside>
                 </div>
+            </Show>
+
+            <Show when={videoPreview()}>
+                <Portal>
+                    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/75 px-4 py-6 md:py-8">
+                        <div class="max-h-[calc(100vh-3rem)] w-full max-w-5xl overflow-y-auto rounded-[28px] border border-white/10 bg-slate-950 p-4 shadow-2xl md:max-h-[calc(100vh-4rem)]">
+                            <div class="mb-4 flex items-center justify-between gap-4">
+                                <div>
+                                    <p class="text-sm uppercase tracking-[0.2em] text-white/55">Preview</p>
+                                    <p class="text-lg font-medium text-white">班级视频预览</p>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    class="border-white/15 bg-white/5 text-white hover:bg-white/10"
+                                    onClick={() => setVideoPreview(null)}
+                                >
+                                    <X class="h-4 w-4" />
+                                    关闭
+                                </Button>
+                            </div>
+                            <VePlayerPreview
+                                url={videoPreview()!.url}
+                                coverUrl={videoPreview()?.coverUrl}
+                            />
+                        </div>
+                    </div>
+                </Portal>
             </Show>
         </section>
     );

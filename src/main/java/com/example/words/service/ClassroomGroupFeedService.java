@@ -36,6 +36,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -60,6 +61,7 @@ public class ClassroomGroupFeedService {
     private final StudyPlanClassroomRepository studyPlanClassroomRepository;
     private final AccessControlService accessControlService;
     private final AppUserRepository appUserRepository;
+    private final VideoAssetService videoAssetService;
 
     public ClassroomGroupFeedService(
             ClassroomGroupFeedMessageRepository classroomGroupFeedMessageRepository,
@@ -71,7 +73,8 @@ public class ClassroomGroupFeedService {
             StudyPlanRepository studyPlanRepository,
             StudyPlanClassroomRepository studyPlanClassroomRepository,
             AccessControlService accessControlService,
-            AppUserRepository appUserRepository) {
+            AppUserRepository appUserRepository,
+            VideoAssetService videoAssetService) {
         this.classroomGroupFeedMessageRepository = classroomGroupFeedMessageRepository;
         this.classroomRepository = classroomRepository;
         this.classroomMemberRepository = classroomMemberRepository;
@@ -82,6 +85,7 @@ public class ClassroomGroupFeedService {
         this.studyPlanClassroomRepository = studyPlanClassroomRepository;
         this.accessControlService = accessControlService;
         this.appUserRepository = appUserRepository;
+        this.videoAssetService = videoAssetService;
     }
 
     @Transactional(readOnly = true)
@@ -124,8 +128,14 @@ public class ClassroomGroupFeedService {
                         messageType,
                         pageable
                 );
-        Map<Long, String> authorNames = authorNames(messages.getContent());
-        return messages.map(message -> toResponse(message, authorNames));
+        List<ClassroomGroupFeedMessage> visibleMessages = visibleMessages(messages.getContent());
+        Map<Long, String> authorNames = authorNames(visibleMessages);
+        List<ClassroomGroupFeedMessageResponse> content = visibleMessages.stream()
+                .map(message -> toResponse(message, authorNames))
+                .toList();
+        long removedCount = messages.getContent().size() - visibleMessages.size();
+        long totalElements = Math.max(content.size(), messages.getTotalElements() - removedCount);
+        return new PageImpl<>(content, pageable, totalElements);
     }
 
     @Transactional
@@ -217,12 +227,7 @@ public class ClassroomGroupFeedService {
         if (!isPlayable(video)) {
             throw new BadRequestException("Video is not ready for classroom playback");
         }
-        return new VideoAccessResponse(
-                video.getId(),
-                VideoAccessMode.PLAY,
-                video.getMediaUrl(),
-                video.getCoverUrl()
-        );
+        return videoAssetService.buildAccessResponse(video, VideoAccessMode.PLAY);
     }
 
     @Transactional
@@ -311,6 +316,26 @@ public class ClassroomGroupFeedService {
         return video.getStatus() == VideoStatus.READY
                 && video.getCloudPublishStatus() == VideoCloudPublishStatus.PUBLISHED
                 && trimToNull(video.getMediaUrl()) != null;
+    }
+
+    private List<ClassroomGroupFeedMessage> visibleMessages(List<ClassroomGroupFeedMessage> messages) {
+        List<Long> videoIds = messages.stream()
+                .filter(message -> message.getMessageType() == ClassroomGroupFeedMessageType.VIDEO)
+                .map(ClassroomGroupFeedMessage::getResourceId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (videoIds.isEmpty()) {
+            return messages;
+        }
+
+        Set<Long> existingVideoIds = videoAssetRepository.findAllById(videoIds).stream()
+                .map(VideoAsset::getId)
+                .collect(Collectors.toSet());
+        return messages.stream()
+                .filter(message -> message.getMessageType() != ClassroomGroupFeedMessageType.VIDEO
+                        || existingVideoIds.contains(message.getResourceId()))
+                .toList();
     }
 
     private void ensureClassroomActive(Classroom classroom) {

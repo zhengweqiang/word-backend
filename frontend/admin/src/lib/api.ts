@@ -212,6 +212,8 @@ export const api = {
             method: "POST",
             body: payload,
         }),
+    getClassroomGroupFeedVideoPlayback: (classroomId: number, videoId: number) =>
+        request<VideoAccessResponse>(`/api/classrooms/${classroomId}/group-feed/videos/${videoId}/play`),
 
     listDictionaries: () => request<Dictionary[]>("/api/dictionaries"),
     listDictionaryEntriesPage: (

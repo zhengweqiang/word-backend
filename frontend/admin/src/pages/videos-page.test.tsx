@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import VePlayer from "@volcengine/veplayer";
 import { api } from "@/lib/api";
 import { VideosPage } from "@/pages/videos-page";
 import type { VideoResponse } from "@/types/api";
@@ -15,6 +16,14 @@ vi.mock("@/lib/api", () => ({
         unpublishVideo: vi.fn(),
         deleteVideo: vi.fn(),
     },
+}));
+
+vi.mock("@volcengine/veplayer", () => ({
+    default: vi.fn().mockImplementation(function () {
+        return {
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+    }),
 }));
 
 vi.mock("@/features/auth/auth-context", () => ({
@@ -105,7 +114,39 @@ describe("VideosPage", () => {
         await waitFor(() => {
             expect(api.syncVideo).toHaveBeenCalledWith(1);
             expect(api.getVideoAccess).toHaveBeenCalledWith(1);
-            expect(document.querySelector("video")?.getAttribute("src")).toBe("http://example.com/video.mp4");
+            const previewOverlay = screen.getByText("Preview").closest(".fixed");
+            expect(previewOverlay).toHaveClass("items-start");
+            expect(previewOverlay).toHaveClass("md:pt-20");
+            expect(previewOverlay).not.toHaveClass("items-center");
+            expect(screen.getByTestId("veplayer-preview")).toHaveAttribute("data-url", "https://example.com/video.mp4");
+            expect(screen.getByTestId("video-preview-fallback")).toHaveAttribute("src", "https://example.com/video.mp4");
+            expect(VePlayer).not.toHaveBeenCalled();
         });
+    });
+
+    it("keeps long video title and file name from squeezing the status badges", async () => {
+        const longTitle = "long-video-title-that-should-not-squeeze-the-preview-and-cloud-playable-badges";
+        const longFileName = "this-is-a-very-very-long-video-file-name-that-should-be-truncated-in-the-card.mp4";
+        vi.mocked(api.listVideosPage).mockResolvedValue(videoPage({
+            ...readyVideo,
+            title: longTitle,
+            originalFileName: longFileName,
+            cloudPublishStatus: "PUBLISHED",
+        }));
+
+        render(() => <VideosPage />);
+
+        const title = await screen.findByText(longTitle);
+        const fileName = screen.getByText(longFileName);
+        const statusBadges = screen.getByTestId("video-status-badges-1");
+
+        expect(title).toHaveClass("max-w-[70%]");
+        expect(title).toHaveClass("truncate");
+        expect(title).toHaveAttribute("title", longTitle);
+        expect(fileName).toHaveClass("max-w-[90%]");
+        expect(fileName).toHaveClass("truncate");
+        expect(fileName).toHaveAttribute("title", longFileName);
+        expect(statusBadges).toHaveClass("shrink-0");
+        expect(statusBadges).toHaveClass("whitespace-nowrap");
     });
 });

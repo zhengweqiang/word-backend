@@ -1,6 +1,7 @@
 import { BookOpen, MessageSquare, Plus, Send, Video, X } from "lucide-solid";
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { createStore } from "solid-js/store";
+import { Portal } from "solid-js/web";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { VePlayerPreview } from "@/components/videos/veplayer-preview";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { useAuth } from "@/features/auth/auth-context";
@@ -29,6 +31,7 @@ import type {
     Dictionary,
     PaginatedResponse,
     UserResponse,
+    VideoAccessResponse,
     VideoResponse,
 } from "@/types/api";
 
@@ -72,6 +75,7 @@ export function ClassroomsPage() {
     const [groupFeedText, setGroupFeedText] = createSignal("");
     const [groupFeedError, setGroupFeedError] = createSignal("");
     const [groupFeedSavingKey, setGroupFeedSavingKey] = createSignal("");
+    const [groupFeedVideoPreview, setGroupFeedVideoPreview] = createSignal<VideoAccessResponse | null>(null);
     const [selectedGroupFeedDictionaryId, setSelectedGroupFeedDictionaryId] = createSignal("");
     const [selectedGroupFeedVideoId, setSelectedGroupFeedVideoId] = createSignal("");
     const [form, setForm] = createStore(createDefaultForm());
@@ -364,6 +368,24 @@ export function ClassroomsPage() {
         }
     };
 
+    const handlePreviewGroupFeedVideo = async (message: ClassroomGroupFeedMessageResponse) => {
+        if (!message.resourceId) {
+            setGroupFeedError("视频资源不存在");
+            return;
+        }
+
+        setGroupFeedSavingKey(`preview-video-${message.id}`);
+        setGroupFeedError("");
+        try {
+            const access = await api.getClassroomGroupFeedVideoPlayback(message.classroomId, message.resourceId);
+            setGroupFeedVideoPreview(access);
+        } catch (previewError) {
+            setGroupFeedError(previewError instanceof Error ? previewError.message : "获取视频预览地址失败");
+        } finally {
+            setGroupFeedSavingKey("");
+        }
+    };
+
     return (
         <section class="space-y-6">
             <PageHeader
@@ -398,24 +420,28 @@ export function ClassroomsPage() {
                 <>
                     <Card>
                         <CardHeader class="gap-4">
-                            <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div class="grid gap-5">
                                 <div>
                                     <CardTitle>班级列表</CardTitle>
                                     <CardDescription>支持按班级名称或描述搜索，并按名称、创建时间、更新时间排序。</CardDescription>
                                 </div>
-                                <div class="grid w-full gap-3 lg:w-auto lg:min-w-[640px] lg:grid-cols-[minmax(0,1.4fr)_180px_160px]">
-                                    <div class="space-y-2">
-                                        <Label>搜索</Label>
+                                <div
+                                    class="flex w-full flex-wrap items-center gap-x-8 gap-y-3"
+                                    data-testid="classroom-list-filters"
+                                >
+                                    <div class="flex min-w-[280px] items-center gap-3" data-testid="classroom-filter-field">
+                                        <Label class="shrink-0 whitespace-nowrap">搜索</Label>
                                         <Input
+                                            class="w-[276px]"
                                             placeholder="按班级名称或描述搜索"
                                             value={keyword()}
                                             onInput={(event) => handleKeywordInput(event.currentTarget.value)}
                                         />
                                     </div>
-                                    <div class="space-y-2">
-                                        <Label>排序字段</Label>
+                                    <div class="flex items-center gap-3" data-testid="classroom-filter-field">
+                                        <Label class="shrink-0 whitespace-nowrap">排序字段</Label>
                                         <select
-                                            class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                            class="h-11 w-[108px] rounded-lg border border-input bg-background/70 px-3 text-sm"
                                             value={sortBy()}
                                             onChange={(event) =>
                                                 handleSortByChange(
@@ -428,10 +454,10 @@ export function ClassroomsPage() {
                                             <option value="name">班级名称</option>
                                         </select>
                                     </div>
-                                    <div class="space-y-2">
-                                        <Label>排序方向</Label>
+                                    <div class="flex items-center gap-3" data-testid="classroom-filter-field">
+                                        <Label class="shrink-0 whitespace-nowrap">排序方向</Label>
                                         <select
-                                            class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                            class="h-11 w-[78px] rounded-lg border border-input bg-background/70 px-3 text-sm"
                                             value={sortDir()}
                                             onChange={(event) =>
                                                 handleSortDirChange(event.currentTarget.value as "asc" | "desc")
@@ -825,8 +851,23 @@ export function ClassroomsPage() {
                                                                                         </p>
                                                                                     </Show>
                                                                                 </div>
+                                                                                <Show when={message.messageType === "VIDEO"}>
+                                                                                    <Button
+                                                                                        variant="outline"
+                                                                                        size="sm"
+                                                                                        disabled={groupFeedSavingKey() === `preview-video-${message.id}`}
+                                                                                        data-testid={`classroom-video-preview-${message.id}`}
+                                                                                        onClick={() => void handlePreviewGroupFeedVideo(message)}
+                                                                                    >
+                                                                                        {groupFeedSavingKey() === `preview-video-${message.id}`
+                                                                                            ? "读取中..."
+                                                                                            : "查看视频"}
+                                                                                    </Button>
+                                                                                </Show>
                                                                                 <a
-                                                                                    class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background/80 px-3 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
+                                                                                    class={message.messageType === "VIDEO"
+                                                                                        ? "hidden"
+                                                                                        : "inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background/80 px-3 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"}
                                                                                     href={
                                                                                         message.messageType === "DICTIONARY"
                                                                                             ? "/dictionaries"
@@ -976,6 +1017,33 @@ export function ClassroomsPage() {
                         </form>
                     </div>
                 </div>
+            </Show>
+
+            <Show when={groupFeedVideoPreview()}>
+                <Portal>
+                    <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/75 px-4 py-6 md:py-8">
+                        <div class="max-h-[calc(100vh-3rem)] w-full max-w-5xl overflow-y-auto rounded-[28px] border border-white/10 bg-slate-950 p-4 shadow-2xl md:max-h-[calc(100vh-4rem)]">
+                        <div class="mb-4 flex items-center justify-between gap-4">
+                            <div>
+                                <p class="text-sm uppercase tracking-[0.2em] text-white/55">Preview</p>
+                                <p class="text-lg font-medium text-white">班级视频预览</p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                class="border-white/15 bg-white/5 text-white hover:bg-white/10"
+                                onClick={() => setGroupFeedVideoPreview(null)}
+                            >
+                                <X class="h-4 w-4" />
+                                关闭
+                            </Button>
+                        </div>
+                        <VePlayerPreview
+                            url={groupFeedVideoPreview()!.url}
+                            coverUrl={groupFeedVideoPreview()?.coverUrl}
+                        />
+                        </div>
+                    </div>
+                </Portal>
             </Show>
         </section>
     );
