@@ -213,7 +213,7 @@ export function UsersPage() {
                                 class={
                                     isAdmin()
                                         ? "grid w-full gap-4 md:grid-cols-[max-content_minmax(0,420px)] md:items-center"
-                                        : "w-full md:w-[280px]"
+                                        : "w-full"
                                 }
                             >
                                 <Show when={isAdmin()}>

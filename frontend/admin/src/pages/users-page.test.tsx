@@ -1,12 +1,16 @@
 import { render, screen, waitFor } from "@solidjs/testing-library";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { UsersPage } from "@/pages/users-page";
-import type { PaginatedResponse, UserResponse } from "@/types/api";
+import type { PaginatedResponse, UserResponse, UserRole } from "@/types/api";
+
+const authState = vi.hoisted(() => ({
+    role: "ADMIN" as UserRole,
+}));
 
 vi.mock("@/features/auth/auth-context", () => ({
     useAuth: () => ({
-        user: () => ({ id: 1, username: "admin", displayName: "Admin", role: "ADMIN", status: "ACTIVE" }),
+        user: () => ({ id: 1, username: "user", displayName: "Current User", role: authState.role, status: "ACTIVE" }),
     }),
 }));
 
@@ -33,6 +37,11 @@ const userPage = (content: UserResponse[]): PaginatedResponse<UserResponse> => (
 });
 
 describe("UsersPage layout", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        authState.role = "ADMIN";
+    });
+
     it("renders admin filters as a full-width row beneath the list description", async () => {
         vi.mocked(api.listUsersPage).mockResolvedValue(
             userPage([
@@ -68,5 +77,38 @@ describe("UsersPage layout", () => {
         expect(nameFilter).toHaveClass("flex");
         expect(nameFilter).toHaveClass("items-center");
         expect(nameFilter).toHaveClass("gap-3");
+    });
+
+    it("renders teacher student search as an inline row beneath the student list description", async () => {
+        authState.role = "TEACHER";
+        vi.mocked(api.listMyStudentsPage).mockResolvedValue(
+            userPage([
+                {
+                    id: 3,
+                    username: "student",
+                    displayName: "Student One",
+                    role: "STUDENT",
+                    status: "ACTIVE",
+                    lastLoginAt: "2026-07-14T21:00:00",
+                },
+            ]),
+        );
+
+        render(() => <UsersPage />);
+
+        expect(await screen.findByText("Student One")).toBeInTheDocument();
+        expect(screen.getByText("支持按学生姓名筛选当前老师账号下的学生。")).toBeInTheDocument();
+
+        const filters = screen.getByTestId("user-list-filters");
+        const [studentFilter] = Array.from(filters.children);
+
+        expect(filters.parentElement).toHaveClass("flex-col");
+        expect(filters).toHaveClass("w-full");
+        expect(filters).not.toHaveClass("md:w-[280px]");
+        expect(studentFilter).toHaveClass("flex");
+        expect(studentFilter).toHaveClass("items-center");
+        expect(studentFilter).toHaveClass("gap-3");
+        expect(screen.getByText("学生姓名")).toBeInTheDocument();
+        expect(screen.getByPlaceholderText("按学生姓名筛选")).toBeInTheDocument();
     });
 });
