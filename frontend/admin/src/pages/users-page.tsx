@@ -199,7 +199,7 @@ export function UsersPage() {
             >
                 <Card>
                     <CardHeader class="gap-4">
-                        <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="flex flex-col gap-4">
                             <div>
                                 <CardTitle>{isAdmin() ? "用户清单" : "我的学生清单"}</CardTitle>
                                 <CardDescription>
@@ -209,17 +209,18 @@ export function UsersPage() {
                                 </CardDescription>
                             </div>
                             <div
+                                data-testid="user-list-filters"
                                 class={
                                     isAdmin()
-                                        ? "grid w-full gap-3 md:w-auto md:min-w-[420px] md:grid-cols-[180px_minmax(0,1fr)]"
+                                        ? "grid w-full gap-4 md:grid-cols-[max-content_minmax(0,420px)] md:items-center"
                                         : "w-full md:w-[280px]"
                                 }
                             >
                                 <Show when={isAdmin()}>
-                                    <div class="space-y-2">
-                                        <Label>角色</Label>
+                                    <div class="flex min-w-0 items-center gap-3">
+                                        <Label class="shrink-0">角色</Label>
                                         <select
-                                            class="h-11 rounded-lg border border-input bg-background/70 px-3 text-sm"
+                                            class="h-11 w-[112px] shrink-0 rounded-lg border border-input bg-background/70 px-3 text-sm"
                                             value={roleFilter()}
                                             onChange={(event) =>
                                                 handleRoleFilterChange(event.currentTarget.value as "ALL" | UserRole)
@@ -230,9 +231,10 @@ export function UsersPage() {
                                         </select>
                                     </div>
                                 </Show>
-                                <div class="space-y-2">
-                                    <Label>{isAdmin() ? "用户姓名" : "学生姓名"}</Label>
+                                <div class="flex min-w-0 items-center gap-3">
+                                    <Label class="shrink-0">{isAdmin() ? "用户姓名" : "学生姓名"}</Label>
                                     <Input
+                                        class="min-w-0 flex-1 md:flex-none md:w-[320px]"
                                         placeholder={isAdmin() ? "按用户姓名筛选" : "按学生姓名筛选"}
                                         value={nameFilter()}
                                         onInput={(event) => handleNameFilterInput(event.currentTarget.value)}
