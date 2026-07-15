@@ -57,7 +57,16 @@ describe("UsersPage layout", () => {
         expect(filters.parentElement).not.toHaveClass("justify-between");
         await waitFor(() => {
             expect(filters).toHaveClass("w-full");
-            expect(filters).toHaveClass("md:grid-cols-[180px_minmax(0,320px)]");
+            expect(filters).toHaveClass("md:grid-cols-[max-content_minmax(0,420px)]");
         });
+
+        const [roleFilter, nameFilter] = Array.from(filters.children);
+
+        expect(roleFilter).toHaveClass("flex");
+        expect(roleFilter).toHaveClass("items-center");
+        expect(roleFilter).toHaveClass("gap-3");
+        expect(nameFilter).toHaveClass("flex");
+        expect(nameFilter).toHaveClass("items-center");
+        expect(nameFilter).toHaveClass("gap-3");
     });
 });
