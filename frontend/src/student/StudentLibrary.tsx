@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { BookOpen, CaretRight, Star } from '@phosphor-icons/react';
 import { dictionaryWordApi, studentWordMemoryApi } from '../api';
 import type { Dictionary, MetaWord, StudentWordMemory } from '../types';
@@ -53,7 +53,7 @@ export function StudentLibrary({
         const page = await dictionaryWordApi.getWordsByDictionary(selectedDictionaryId, 1, 100);
         if (!active) return;
         setWords(page.content);
-        setSelectedWord(page.content[0] ?? null);
+        setSelectedWord(null);
         setSelectedMemory(null);
       } catch (loadError) {
         if (active) setError(loadError instanceof Error ? loadError.message : '词书加载失败');
@@ -127,10 +127,6 @@ export function StudentLibrary({
     }
   };
 
-  const detailWord = selectedMemory ? memoryToWord(selectedMemory) : selectedWord;
-  const detailMemory = detailWord ? (selectedMemory ?? memoryByWordId[detailWord.id]) : undefined;
-  const favorite = detailMemory?.favorite ?? false;
-
   return (
     <>
       <div className="section-header"><div><p className="eyebrow">Word Library</p><h2>词库与复习</h2></div></div>
@@ -157,28 +153,20 @@ export function StudentLibrary({
                   <div className="dictionary-card__words">
                     {loading && <p className="inline-note">正在加载词条...</p>}
                     {error && <p className="inline-error" role="alert">{error}</p>}
-                    {!loading && !error && (
+                    {!loading && !error && words.length === 0 && (
+                      <p className="inline-note">这本词书还没有词条。</p>
+                    )}
+                    {!loading && !error && words.length > 0 && (
                       <>
-                        <div className="word-chip-list">
-                          {words.map((word) => (
-                            <button
-                              type="button"
-                              key={word.id}
-                              className={selectedWord?.id === word.id ? 'is-active' : ''}
-                              onClick={() => {
-                                setSelectedWord(word);
-                                setSelectedMemory(null);
-                              }}
-                            >
-                              {word.word}
-                            </button>
-                          ))}
-                        </div>
-                        {detailWord && selectedDictionaryId === dictionary.id && renderWordDetail(
-                          detailWord,
-                          detailMemory,
-                          favorite,
-                          favoriteUpdatingId === detailWord.id,
+                        {renderDictionaryWordBrowser(
+                          words,
+                          selectedWord,
+                          memoryByWordId,
+                          favoriteUpdatingId,
+                          (word) => {
+                            setSelectedWord(word);
+                            setSelectedMemory(null);
+                          },
                           toggleFavorite,
                         )}
                       </>
@@ -263,17 +251,99 @@ function MemoryList({
   );
 }
 
+function renderDictionaryWordBrowser(
+  words: MetaWord[],
+  selectedWord: MetaWord | null,
+  memoryByWordId: Record<number, StudentWordMemory>,
+  favoriteUpdatingId: number | null,
+  onSelect: (word: MetaWord) => void,
+  onToggleFavorite: (metaWordId: number, favorite: boolean) => Promise<void>,
+) {
+  const selectedIndex = selectedWord
+    ? words.findIndex((word) => word.id === selectedWord.id)
+    : -1;
+
+  return (
+    <div className="dictionary-word-browser">
+      <div className="dictionary-word-browser__top">
+        <div>
+          <p className="eyebrow">Words</p>
+          <strong>{words.length} 个词条</strong>
+        </div>
+        <span>{selectedIndex >= 0 ? `#${selectedIndex + 1}` : '未选择'}</span>
+      </div>
+      <div className="library-word-grid">
+        {words.map((word, index) => {
+          const memory = memoryByWordId[word.id];
+          const active = selectedWord?.id === word.id;
+          const favorite = memory?.favorite ?? false;
+          const preview = getWordPreview(word);
+          const phonetic = getPhoneticDisplay(word);
+          const partOfSpeech = word.partOfSpeech?.trim();
+          const cardClass = [
+            'library-word-card',
+            active ? 'is-active' : '',
+            memory?.favorite ? 'is-favorite' : '',
+          ].filter(Boolean).join(' ');
+
+          return (
+            <Fragment key={word.id}>
+              <button
+                type="button"
+                className={cardClass}
+                onClick={() => onSelect(word)}
+                aria-pressed={active}
+              >
+                <span className="library-word-card__index">{String(index + 1).padStart(2, '0')}</span>
+                <span className="library-word-card__body">
+                  <span className="library-word-card__title">
+                    <strong>{word.word}</strong>
+                    {memory?.favorite && <Star size={15} weight="fill" />}
+                  </span>
+                  <span className="library-word-card__meta">
+                    {partOfSpeech && <span>{partOfSpeech}</span>}
+                    {phonetic && <span>{phonetic}</span>}
+                    {memory && <span>掌握 {Math.round(memory.masteryLevel)}%</span>}
+                  </span>
+                  <span className="library-word-card__preview">{preview}</span>
+                </span>
+              </button>
+              {active && renderWordDetail(
+                word,
+                memory,
+                favorite,
+                favoriteUpdatingId === word.id,
+                onToggleFavorite,
+                true,
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function renderWordDetail(
   word: MetaWord,
   memory: StudentWordMemory | undefined,
   favorite: boolean,
   favoriteUpdating: boolean,
   onToggleFavorite: (metaWordId: number, favorite: boolean) => Promise<void>,
+  inline = false,
 ) {
+  const phonetic = getPhoneticDisplay(word);
+  const partOfSpeech = word.partOfSpeech?.trim();
+  const definition = word.definition || word.translation || '暂无释义';
+  const hasSeparateTranslation = Boolean(word.definition && word.translation && word.translation !== word.definition);
+
   return (
-    <div className="library-word-detail">
+    <div className={`library-word-detail ${inline ? 'library-word-detail--inline' : ''}`}>
       <div className="library-word-detail__heading">
-        <h3>{word.word}</h3>
+        <div>
+          <p className="eyebrow">Selected Word</p>
+          <h3>{word.word}</h3>
+        </div>
         <button
           type="button"
           className={favorite ? 'favorite-toggle is-active' : 'favorite-toggle'}
@@ -285,7 +355,13 @@ function renderWordDetail(
           <Star size={20} weight={favorite ? 'fill' : 'regular'} />
         </button>
       </div>
-      {word.phonetic && <p className="phonetic">{word.phonetic}</p>}
+      {phonetic && <p className="phonetic">{phonetic}</p>}
+      {(partOfSpeech || typeof word.difficulty === 'number') && (
+        <div className="library-word-detail__badges">
+          {partOfSpeech && <span>{partOfSpeech}</span>}
+          {typeof word.difficulty === 'number' && <span>难度 {word.difficulty}</span>}
+        </div>
+      )}
       {memory && (
         <div className="memory-stats" aria-label="记忆状态">
           <span>盒位 {memory.boxLevel}</span>
@@ -293,7 +369,16 @@ function renderWordDetail(
           <span>错 {memory.wrongTimes}</span>
         </div>
       )}
-      <p>{word.definition || word.translation || '暂无释义'}</p>
+      <div className="library-word-detail__definition">
+        <span>释义</span>
+        <p>{definition}</p>
+      </div>
+      {hasSeparateTranslation && (
+        <div className="library-word-detail__definition library-word-detail__definition--quiet">
+          <span>译文</span>
+          <p>{word.translation}</p>
+        </div>
+      )}
       <SyllableReader word={word.word} detail={word.syllableDetail} />
       {word.exampleSentence && <div className="example-strip"><span>例句</span><p>{word.exampleSentence}</p></div>}
     </div>
@@ -319,4 +404,13 @@ function memoryToWord(memory: StudentWordMemory): MetaWord {
     phoneticDetail: memory.phoneticDetail,
     syllableDetail: memory.syllableDetail,
   };
+}
+
+function getPhoneticDisplay(word: MetaWord) {
+  return word.phoneticDetail?.us || word.phonetic || word.phoneticDetail?.uk || '';
+}
+
+function getWordPreview(word: MetaWord) {
+  const text = word.translation || word.definition || word.exampleSentence || '暂无释义';
+  return text.length > 54 ? `${text.slice(0, 54)}...` : text;
 }
