@@ -4,7 +4,9 @@ import com.example.words.model.AttentionState;
 import com.example.words.model.StudyActionType;
 import com.example.words.model.StudyRecordResult;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -40,6 +42,10 @@ public class StudentDashboardRecordRequest {
 
     private AttentionState attentionState;
 
+    @NotBlank(message = "requestKey is required")
+    @Size(max = 64, message = "requestKey must not exceed 64 characters")
+    private String requestKey;
+
     public RecordStudyRequest toRecordStudyRequest() {
         return new RecordStudyRequest(
                 metaWordId,
@@ -49,7 +55,8 @@ public class StudentDashboardRecordRequest {
                 focusSeconds,
                 idleSeconds,
                 interactionCount,
-                attentionState
+                attentionState,
+                requestKey
         );
     }
 }

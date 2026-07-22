@@ -7,6 +7,7 @@ import { DictionariesPage } from "@/pages/dictionaries-page";
 import { ImportCenterPage } from "@/pages/import-center-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import { OverviewPage } from "@/pages/overview-page";
+import { PointsPage } from "@/pages/points-page";
 import { StudyPlansPage } from "@/pages/study-plans-page";
 import { TeacherClassChatPage } from "@/pages/teacher-class-chat-page";
 import { UsersPage } from "@/pages/users-page";
@@ -20,6 +21,7 @@ function App() {
                 <Route path="/" component={ProtectedLayout}>
                     <Route path="/" component={OverviewPage} />
                     <Route path="/users" component={UsersPage} />
+                    <Route path="/points" component={PointsPage} />
                     <Route path="/ai-configs" component={AiConfigsPage} />
                     <Route path="/classrooms/chat" component={TeacherClassChatPage} />
                     <Route path="/classrooms" component={ClassroomsPage} />

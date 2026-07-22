@@ -587,6 +587,7 @@ export interface StudyTask {
 }
 
 export interface RecordStudyPayload {
+  requestKey: string;
   metaWordId: number;
   actionType: StudyActionType;
   result: StudyRecordResult;
@@ -640,4 +641,47 @@ export interface StudentDashboard {
 
 export interface StudentDashboardRecordPayload extends RecordStudyPayload {
   studentStudyPlanId: number;
+}
+
+export type PointAccountStatus = 'ACTIVE' | 'FROZEN' | 'CLOSED';
+
+export type PointTransactionType = 'EARN' | 'DEDUCT' | 'FREEZE' | 'UNFREEZE' | 'SPEND' | 'REVERSE';
+
+export type PointSourceType =
+  | 'STUDY_TASK'
+  | 'STUDY_RECORD'
+  | 'VIDEO_WATCH'
+  | 'EXAM'
+  | 'MANUAL_ADJUSTMENT'
+  | 'ADMIN_CORRECTION'
+  | 'REDEMPTION';
+
+export interface StudentPointSummary {
+  accountId: number;
+  studentId: number;
+  availablePoints: number;
+  frozenPoints: number;
+  lifetimeEarnedPoints: number;
+  lifetimeSpentPoints: number;
+  todayEarnedPoints: number;
+  status: PointAccountStatus;
+}
+
+export interface StudentPointTransaction {
+  id: number;
+  accountId: number;
+  studentId: number;
+  transactionType: PointTransactionType;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  sourceType: PointSourceType;
+  sourceId?: number | null;
+  sourceKey?: string | null;
+  ruleCode?: string | null;
+  operatorId?: number | null;
+  operatorRole?: string | null;
+  reason?: string | null;
+  reversedTransactionId?: number | null;
+  createdAt: string;
 }

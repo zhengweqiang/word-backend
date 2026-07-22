@@ -25,12 +25,27 @@ import type {
 interface StudyPlansPageData {
     plans: StudyPlanResponse[];
     classrooms: ClassroomResponse[];
-    dictionaries: Dictionary[];
 }
+
+const dictionaryClassroomMismatchMessage = "所选词书未分配给全部班级，请重新选择。";
+const reviewIntervalsStartMessage = "复习间隔必须从 0 开始，例如：0,1,3,7,14。";
+
+const toStudyPlanCreateError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : "创建学习计划失败，请稍后重试。";
+    if (message.includes("dictionaryId is not associated with all selected classrooms")) {
+        return dictionaryClassroomMismatchMessage;
+    }
+    if (message.includes("reviewIntervals must start with 0")) {
+        return reviewIntervalsStartMessage;
+    }
+    return message;
+};
 
 export function StudyPlansPage() {
     const auth = useAuth();
     const [feedback, setFeedback] = createSignal("");
+    const [createError, setCreateError] = createSignal("");
+    const [creating, setCreating] = createSignal(false);
     const [selectedPlanId, setSelectedPlanId] = createSignal<number | null>(null);
     const [form, setForm] = createStore({
         name: "",
@@ -43,7 +58,7 @@ export function StudyPlansPage() {
         dailyNewCount: "20",
         dailyReviewLimit: "60",
         reviewMode: "FIXED_INTERVAL",
-        reviewIntervals: "1,3,7,14",
+        reviewIntervals: "0,1,3,7,14",
         completionThreshold: "85",
         dailyDeadlineTime: "21:00",
         attentionTrackingEnabled: true,
@@ -59,15 +74,33 @@ export function StudyPlansPage() {
             if (!user) {
                 return null;
             }
-            const [plans, classrooms, dictionaries] = await Promise.all([
+            const [plans, classrooms] = await Promise.all([
                 api.listStudyPlans(),
                 api.listClassrooms(),
-                api.listDictionaries(),
             ]);
             if (!selectedPlanId() && plans.length > 0) {
                 setSelectedPlanId(plans[0].id);
             }
-            return { plans, classrooms, dictionaries };
+            return { plans, classrooms };
+        },
+    );
+
+    const [availableDictionaries] = createResource(
+        () => [...form.classroomIds],
+        async (classroomIds): Promise<Dictionary[]> => {
+            try {
+                const dictionaries = await api.listDictionaries(classroomIds);
+                if (form.dictionaryId && !dictionaries.some(
+                    (dictionary) => String(dictionary.id) === form.dictionaryId,
+                )) {
+                    setForm("dictionaryId", "");
+                    setCreateError("所选词书不适用于当前班级，请重新选择共同可用的词书。");
+                }
+                return dictionaries;
+            } catch (error) {
+                setCreateError(toStudyPlanCreateError(error));
+                return [];
+            }
         },
     );
 
@@ -108,33 +141,47 @@ export function StudyPlansPage() {
 
     const handleCreate = async (event: SubmitEvent) => {
         event.preventDefault();
-        const created = await api.createStudyPlan({
-            name: form.name.trim(),
-            description: form.description.trim() || undefined,
-            dictionaryId: Number(form.dictionaryId),
-            classroomIds: form.classroomIds,
-            startDate: form.startDate,
-            endDate: form.endDate || null,
-            timezone: form.timezone,
-            dailyNewCount: Number(form.dailyNewCount),
-            dailyReviewLimit: Number(form.dailyReviewLimit),
-            reviewMode: form.reviewMode,
-            reviewIntervals: form.reviewIntervals
-                .split(",")
-                .map((item) => Number(item.trim()))
-                .filter((value) => !Number.isNaN(value)),
-            completionThreshold: Number(form.completionThreshold),
-            dailyDeadlineTime: form.dailyDeadlineTime,
-            attentionTrackingEnabled: form.attentionTrackingEnabled,
-            minFocusSecondsPerWord: Number(form.minFocusSecondsPerWord),
-            maxFocusSecondsPerWord: Number(form.maxFocusSecondsPerWord),
-            longStayWarningSeconds: Number(form.longStayWarningSeconds),
-            idleTimeoutSeconds: Number(form.idleTimeoutSeconds),
-        });
-        setFeedback("学习计划已创建。");
-        setSelectedPlanId(created.id);
-        await refetch();
-        await refetchInsights();
+        setFeedback("");
+        setCreateError("");
+        const reviewIntervals = form.reviewIntervals
+            .split(",")
+            .map((item) => Number(item.trim()))
+            .filter((value) => !Number.isNaN(value));
+        if (reviewIntervals[0] !== 0) {
+            setCreateError(reviewIntervalsStartMessage);
+            return;
+        }
+        setCreating(true);
+        try {
+            const created = await api.createStudyPlan({
+                name: form.name.trim(),
+                description: form.description.trim() || undefined,
+                dictionaryId: Number(form.dictionaryId),
+                classroomIds: form.classroomIds,
+                startDate: form.startDate,
+                endDate: form.endDate || null,
+                timezone: form.timezone,
+                dailyNewCount: Number(form.dailyNewCount),
+                dailyReviewLimit: Number(form.dailyReviewLimit),
+                reviewMode: form.reviewMode,
+                reviewIntervals,
+                completionThreshold: Number(form.completionThreshold),
+                dailyDeadlineTime: form.dailyDeadlineTime,
+                attentionTrackingEnabled: form.attentionTrackingEnabled,
+                minFocusSecondsPerWord: Number(form.minFocusSecondsPerWord),
+                maxFocusSecondsPerWord: Number(form.maxFocusSecondsPerWord),
+                longStayWarningSeconds: Number(form.longStayWarningSeconds),
+                idleTimeoutSeconds: Number(form.idleTimeoutSeconds),
+            });
+            setFeedback("学习计划已创建。");
+            setSelectedPlanId(created.id);
+            await refetch();
+            await refetchInsights();
+        } catch (error) {
+            setCreateError(toStudyPlanCreateError(error));
+        } finally {
+            setCreating(false);
+        }
     };
 
     return (
@@ -184,9 +231,12 @@ export function StudyPlansPage() {
                                             <Label for="study-plan-dictionary">词书</Label>
                                             <SearchableDictionarySelect
                                                 id="study-plan-dictionary"
-                                                dictionaries={data().dictionaries}
+                                                dictionaries={availableDictionaries() ?? []}
                                                 value={form.dictionaryId}
-                                                onChange={(value) => setForm("dictionaryId", value)}
+                                                onChange={(value) => {
+                                                    setCreateError("");
+                                                    setForm("dictionaryId", value);
+                                                }}
                                             />
                                         </div>
                                     </div>
@@ -267,8 +317,12 @@ export function StudyPlansPage() {
                                             </select>
                                         </div>
                                         <div class="space-y-2">
-                                            <Label>复习间隔</Label>
-                                            <Input value={form.reviewIntervals} onInput={(event) => setForm("reviewIntervals", event.currentTarget.value)} />
+                                            <Label for="study-plan-review-intervals">复习间隔</Label>
+                                            <Input
+                                                id="study-plan-review-intervals"
+                                                value={form.reviewIntervals}
+                                                onInput={(event) => setForm("reviewIntervals", event.currentTarget.value)}
+                                            />
                                         </div>
                                         <div class="space-y-2">
                                             <Label>完成阈值%</Label>
@@ -308,7 +362,25 @@ export function StudyPlansPage() {
                                         启用注意力追踪
                                     </label>
 
-                                    <Button class="w-full md:w-auto" disabled={form.classroomIds.length === 0} type="submit">创建计划</Button>
+                                    <Show when={createError()}>
+                                        <Alert class="border-destructive/30 bg-destructive/10 text-destructive">
+                                            {createError()}
+                                        </Alert>
+                                    </Show>
+
+                                    <Button
+                                        class="w-full md:w-auto"
+                                        disabled={
+                                            form.classroomIds.length === 0 ||
+                                            !form.name.trim() ||
+                                            !form.dictionaryId ||
+                                            availableDictionaries.loading ||
+                                            creating()
+                                        }
+                                        type="submit"
+                                    >
+                                        {creating() ? "正在创建..." : "创建计划"}
+                                    </Button>
                                 </form>
                             </CardContent>
                         </Card>

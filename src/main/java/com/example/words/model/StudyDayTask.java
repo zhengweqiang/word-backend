@@ -66,6 +66,9 @@ public class StudyDayTask {
     @Column(name = "idle_interrupt_count", nullable = false)
     private Integer idleInterruptCount = 0;
 
+    @Column(name = "points_eligible", nullable = false)
+    private boolean pointsEligible = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private StudyDayTaskStatus status = StudyDayTaskStatus.NOT_STARTED;

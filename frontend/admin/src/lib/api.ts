@@ -24,13 +24,25 @@ import type {
     MetaWordEntryPayload,
     MetaWordSuggestionResponse,
     PaginatedResponse,
+    AdminStudentPointAccountResponse,
+    PointEventStatus,
     QuoteResponse,
+    StudentPointAdjustmentOutcome,
+    StudentPointAdjustmentPayload,
+    StudentPointEventAttemptResponse,
+    StudentPointEventResponse,
+    StudentPointRuleCreatePayload,
+    StudentPointRuleResponse,
+    StudentPointRuleUpdatePayload,
+    StudentPointSummaryResponse,
+    StudentPointTransactionResponse,
     StudyPlanOverviewResponse,
     StudyPlanResponse,
     StudyPlanStudentSummaryResponse,
     SyllableBackfillResponse,
     UpdateAiConfigPayload,
     UpdateVideoStorageConfigPayload,
+    TeacherStudentPointResponse,
     UserResponse,
     VideoAccessResponse,
     VideoCloudSyncResponse,
@@ -160,6 +172,62 @@ export const api = {
     removeStudentFromTeacher: (teacherId: number, studentId: number) =>
         request<void>(`/api/teachers/${teacherId}/students/${studentId}`, { method: "DELETE" }),
 
+    listAdminPointAccounts: (params: { page?: number; size?: number }) =>
+        request<PaginatedResponse<AdminStudentPointAccountResponse>>(
+            `/api/admin/points/accounts${buildQueryString(params)}`,
+        ),
+    listAdminPointTransactions: (params: { page?: number; size?: number }) =>
+        request<PaginatedResponse<StudentPointTransactionResponse>>(
+            `/api/admin/points/transactions${buildQueryString(params)}`,
+        ),
+    listAdminPointEvents: (params: { page?: number; size?: number; status?: PointEventStatus }) =>
+        request<PaginatedResponse<StudentPointEventResponse>>(
+            `/api/admin/points/events${buildQueryString(params)}`,
+        ),
+    listPointEventAttempts: (eventId: number) =>
+        request<StudentPointEventAttemptResponse[]>(`/api/admin/points/events/${eventId}/attempts`),
+    retryPointEvent: (eventId: number, payload: { reason: string }) =>
+        request<StudentPointEventResponse>(`/api/admin/points/events/${eventId}/retry`, {
+            method: "POST",
+            body: payload,
+        }),
+    cancelPointEvent: (eventId: number, payload: { reason: string }) =>
+        request<StudentPointEventResponse>(`/api/admin/points/events/${eventId}/cancel`, {
+            method: "POST",
+            body: payload,
+        }),
+    reversePointTransaction: (transactionId: number, payload: { reason: string }) =>
+        request<StudentPointTransactionResponse>(`/api/admin/points/transactions/${transactionId}/reverse`, {
+            method: "POST",
+            body: payload,
+        }),
+    adjustAdminStudentPoints: (studentId: number, payload: StudentPointAdjustmentPayload) =>
+        request<StudentPointAdjustmentOutcome>(`/api/admin/points/students/${studentId}/adjustments`, {
+            method: "POST",
+            body: payload,
+        }),
+    listPointRules: () => request<StudentPointRuleResponse[]>("/api/admin/points/rules"),
+    createPointRule: (payload: StudentPointRuleCreatePayload) =>
+        request<StudentPointRuleResponse>("/api/admin/points/rules", { method: "POST", body: payload }),
+    updatePointRule: (ruleId: number, payload: StudentPointRuleUpdatePayload) =>
+        request<StudentPointRuleResponse>(`/api/admin/points/rules/${ruleId}`, { method: "PUT", body: payload }),
+
+    listTeacherPointStudents: (params: { page?: number; size?: number; name?: string }) =>
+        request<PaginatedResponse<TeacherStudentPointResponse>>(
+            `/api/teachers/me/points/students${buildQueryString(params)}`,
+        ),
+    getTeacherStudentPointSummary: (studentId: number) =>
+        request<StudentPointSummaryResponse>(`/api/teachers/me/points/students/${studentId}`),
+    listTeacherStudentPointTransactions: (studentId: number, params: { page?: number; size?: number }) =>
+        request<PaginatedResponse<StudentPointTransactionResponse>>(
+            `/api/teachers/me/points/students/${studentId}/transactions${buildQueryString(params)}`,
+        ),
+    adjustTeacherStudentPoints: (studentId: number, payload: StudentPointAdjustmentPayload) =>
+        request<StudentPointAdjustmentOutcome>(`/api/teachers/me/points/students/${studentId}/adjustments`, {
+            method: "POST",
+            body: payload,
+        }),
+
     listClassrooms: () => request<ClassroomResponse[]>("/api/classrooms"),
     listClassroomsPage: (params: { page?: number; size?: number; keyword?: string; sortBy?: string; sortDir?: string }) =>
         request<PaginatedResponse<ClassroomResponse>>(`/api/classrooms/page${buildQueryString(params)}`),
@@ -215,7 +283,12 @@ export const api = {
     getClassroomGroupFeedVideoPlayback: (classroomId: number, videoId: number) =>
         request<VideoAccessResponse>(`/api/classrooms/${classroomId}/group-feed/videos/${videoId}/play`),
 
-    listDictionaries: () => request<Dictionary[]>("/api/dictionaries"),
+    listDictionaries: (classroomIds: number[] = []) => {
+        const searchParams = new URLSearchParams();
+        classroomIds.forEach((classroomId) => searchParams.append("classroomIds", String(classroomId)));
+        const query = searchParams.toString();
+        return request<Dictionary[]>(`/api/dictionaries${query ? `?${query}` : ""}`);
+    },
     listDictionaryEntriesPage: (
         dictionaryId: number,
         params: { page?: number; size?: number; keyword?: string; sortBy?: string; sortDir?: string },

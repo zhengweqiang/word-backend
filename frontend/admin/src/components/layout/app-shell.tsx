@@ -4,6 +4,7 @@ import {
     Bot,
     BookCopy,
     CalendarRange,
+    CircleDollarSign,
     Clapperboard,
     Cloud,
     DatabaseZap,
@@ -18,16 +19,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/features/auth/auth-context";
+import { getNavigationForRole } from "@/components/layout/navigation";
+
+const navigationIcons = {
+    dashboard: LayoutDashboard,
+    users: Users,
+    points: CircleDollarSign,
+    bot: Bot,
+    school: School,
+    chat: MessageSquare,
+    book: BookCopy,
+    video: Clapperboard,
+    cloud: Cloud,
+    calendar: CalendarRange,
+    import: DatabaseZap,
+};
 
 interface AppShellProps {
     children: JSX.Element;
-}
-
-interface NavItem {
-    href: string;
-    label: string;
-    icon: typeof LayoutDashboard;
-    roles: string[];
 }
 
 export function AppShell(props: AppShellProps) {
@@ -35,22 +44,7 @@ export function AppShell(props: AppShellProps) {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const navigation = () => {
-        const items: NavItem[] = [
-            { href: "/", label: "总览", icon: LayoutDashboard, roles: ["ADMIN", "TEACHER"] },
-            { href: "/users", label: "用户管理", icon: Users, roles: ["ADMIN", "TEACHER"] },
-            { href: "/ai-configs", label: "AI 配置", icon: Bot, roles: ["ADMIN"] },
-            { href: "/classrooms", label: "班级管理", icon: School, roles: ["ADMIN", "TEACHER"] },
-            { href: "/classrooms/chat", label: "班级聊天", icon: MessageSquare, roles: ["ADMIN", "TEACHER"] },
-            { href: "/dictionaries", label: "词书资源", icon: BookCopy, roles: ["ADMIN", "TEACHER"] },
-            { href: "/videos", label: "视频资源", icon: Clapperboard, roles: ["ADMIN", "TEACHER"] },
-            { href: "/video-storage", label: "视频存储", icon: Cloud, roles: ["ADMIN"] },
-            { href: "/study-plans", label: "学习计划", icon: CalendarRange, roles: ["ADMIN", "TEACHER"] },
-            { href: "/imports", label: "词书导入", icon: DatabaseZap, roles: ["ADMIN"] },
-        ];
-
-        return items.filter((item) => auth.user() && item.roles.includes(auth.user()!.role));
-    };
+    const navigation = () => getNavigationForRole(auth.user()?.role);
 
     const handleLogout = async () => {
         await auth.logout();
@@ -89,7 +83,7 @@ export function AppShell(props: AppShellProps) {
                         <nav class="space-y-2">
                             <For each={navigation()}>
                                 {(item) => {
-                                    const Icon = item.icon;
+                                    const Icon = navigationIcons[item.icon];
                                     const isActive = () =>
                                         item.href === "/"
                                             ? location.pathname === "/"

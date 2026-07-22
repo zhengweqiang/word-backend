@@ -57,6 +57,148 @@ export interface PaginatedResponse<T> {
     empty?: boolean;
 }
 
+export type PointAccountStatus = "ACTIVE" | "FROZEN" | "CLOSED";
+export type PointEventStatus = "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+export type PointEventAttemptStatus = "SUCCEEDED" | "FAILED";
+export type PointAttemptTriggerType = "AUTO" | "MANUAL";
+export type PointTransactionType = "EARN" | "DEDUCT" | "FREEZE" | "UNFREEZE" | "SPEND" | "REVERSE";
+export type PointSourceType =
+    | "STUDY_TASK"
+    | "STUDY_RECORD"
+    | "VIDEO_WATCH"
+    | "EXAM"
+    | "MANUAL_ADJUSTMENT"
+    | "ADMIN_CORRECTION"
+    | "REDEMPTION";
+
+export interface AdminStudentPointAccountResponse {
+    accountId: number;
+    studentId: number;
+    studentName: string;
+    availablePoints: number;
+    frozenPoints: number;
+    lifetimeEarnedPoints: number;
+    lifetimeSpentPoints: number;
+    status: PointAccountStatus;
+    updatedAt?: string | null;
+}
+
+export interface StudentPointTransactionResponse {
+    id: number;
+    accountId: number;
+    studentId: number;
+    transactionType: PointTransactionType;
+    amount: number;
+    balanceBefore: number;
+    balanceAfter: number;
+    sourceType: PointSourceType;
+    sourceId?: number | null;
+    sourceKey: string;
+    ruleCode?: string | null;
+    operatorId?: number | null;
+    operatorRole?: string | null;
+    reason?: string | null;
+    reversedTransactionId?: number | null;
+    createdAt?: string | null;
+}
+
+export interface StudentPointEventResponse {
+    id: number;
+    studentId: number;
+    sourceType: PointSourceType;
+    sourceId?: number | null;
+    sourceKey: string;
+    ruleCode: string;
+    ruleName: string;
+    points: number;
+    status: PointEventStatus;
+    autoAttemptCount: number;
+    nextRetryAt?: string | null;
+    lastError?: string | null;
+    operatorId?: number | null;
+    operatorRole?: string | null;
+    reason?: string | null;
+    transactionId?: number | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    processedAt?: string | null;
+}
+
+export interface StudentPointEventAttemptResponse {
+    id: number;
+    eventId: number;
+    attemptNo: number;
+    triggerType: PointAttemptTriggerType;
+    status: PointEventAttemptStatus;
+    operatorId?: number | null;
+    operatorRole?: string | null;
+    reason?: string | null;
+    errorMessage?: string | null;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+}
+
+export interface StudentPointRuleResponse {
+    id: number;
+    code: string;
+    name: string;
+    description?: string | null;
+    sourceType: PointSourceType;
+    basePoints: number;
+    scopeType?: string | null;
+    scopeId?: number | null;
+    enabled: boolean;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+}
+
+export interface StudentPointRuleCreatePayload {
+    code: string;
+    name: string;
+    description?: string;
+    sourceType: PointSourceType;
+    basePoints: number;
+    scopeType?: string;
+    scopeId?: number;
+    enabled: boolean;
+    reason: string;
+}
+
+export type StudentPointRuleUpdatePayload = Omit<StudentPointRuleCreatePayload, "code">;
+
+export interface StudentPointAdjustmentPayload {
+    requestKey: string;
+    amount: number;
+    reason: string;
+    replacesAdjustmentRequestId?: number;
+}
+
+export interface StudentPointAdjustmentOutcome {
+    requestId: number;
+    eventId: number;
+    status: string;
+    transactionId?: number | null;
+    availableBalance?: number | null;
+}
+
+export interface TeacherStudentPointResponse {
+    studentId: number;
+    studentName: string;
+    availablePoints: number;
+    lifetimeEarnedPoints: number;
+    lifetimeSpentPoints: number;
+    todayEarnedPoints: number;
+}
+
+export interface StudentPointSummaryResponse {
+    studentId: number;
+    availablePoints: number;
+    frozenPoints: number;
+    lifetimeEarnedPoints: number;
+    lifetimeSpentPoints: number;
+    todayEarnedPoints: number;
+}
+
 export interface Dictionary {
     id: number;
     name: string;

@@ -33,6 +33,8 @@ import type {
   StudentAttentionDailyStat,
   StudentDashboard,
   StudentDashboardRecordPayload,
+  StudentPointSummary,
+  StudentPointTransaction,
   StudentStudyPlanSummary,
   StudentWordMemory,
   StudyPlan,
@@ -477,6 +479,13 @@ export const studentDashboardApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     },
+  ),
+};
+
+export const studentPointApi = {
+  getSummary: () => fetchJson<StudentPointSummary>(`${API_BASE}/students/me/points`),
+  getTransactions: (page: number = 0, size: number = 20) => fetchJson<Page<StudentPointTransaction>>(
+    `${API_BASE}/students/me/points/transactions?page=${page}&size=${size}`,
   ),
 };
 
