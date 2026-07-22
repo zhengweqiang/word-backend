@@ -116,6 +116,18 @@ import com.example.words.repository.WordRepository;
 - Use `@Transactional` on service methods that modify data
 - Follow Spring Data JPA naming conventions
 
+### Delete and Foreign Key Rules
+- Do not use cascading deletes anywhere in the system.
+- Database foreign keys must not use `ON DELETE CASCADE`.
+- JPA relationships must not use `CascadeType.REMOVE` or `CascadeType.ALL` when it can delete child records.
+- Business deletion should use explicit service methods, soft delete/status changes, or restrictive foreign keys so related audit and history records are not removed accidentally.
+- Any physical data cleanup must be implemented as an explicit maintenance script or admin operation with a clearly reviewed scope.
+
+### Student Points Background Processing
+- The student points MVP is designed with exactly one background event-processing service instance.
+- Do not implement multi-worker or multi-instance event claiming, sharding, or distributed locking for `student_point_events` unless the design document is explicitly updated first.
+- If future work requires multiple background processors, update `docs/student-point-design.zh-CN.md` with an atomic event-claiming or distributed-locking design before changing code.
+
 ### Logging
 - Use SLF4J with `@Slf4j` annotation
 - Log at appropriate levels: debug, info, warn, error

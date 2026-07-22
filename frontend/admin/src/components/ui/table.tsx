@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 
 export function Table(props: JSX.HTMLAttributes<HTMLDivElement>) {
     const [local, rest] = splitProps(props, ["class"]);
-    return <div class={cn("overflow-hidden rounded-xl border border-border/70", local.class)} {...rest} />;
+    return <div class={cn("overflow-x-auto rounded-lg border border-border/70", local.class)} {...rest} />;
 }
 
 export function TableRoot(props: JSX.HTMLAttributes<HTMLTableElement>) {

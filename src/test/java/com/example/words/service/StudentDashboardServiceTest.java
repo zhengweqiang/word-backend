@@ -161,7 +161,7 @@ class StudentDashboardServiceTest {
         private FakeStudyPlanService() {
             super(
                     null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, new ObjectMapper()
+                    null, null, null, null, null, null, null, null, null, new ObjectMapper()
             );
         }
 

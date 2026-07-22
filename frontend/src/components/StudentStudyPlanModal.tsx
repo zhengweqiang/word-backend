@@ -2,12 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { studentStudyPlanApi } from '../api';
 import type {
   AttentionState,
+  RecordStudyPayload,
   StudentAttentionDailyStat,
   StudentStudyPlanSummary,
   StudyRecordResult,
   StudyTask,
   StudyTaskItem,
 } from '../types';
+import {
+  clearPendingStudySubmission,
+  preparePendingStudySubmission,
+  type PendingStudySubmission,
+} from '../student/study-submission-idempotency';
+
+type RecordStudyAttempt = Omit<RecordStudyPayload, 'requestKey'>;
 
 interface StudentStudyPlanModalProps {
   isOpen: boolean;
@@ -86,6 +94,7 @@ export function StudentStudyPlanModal({ isOpen, onClose }: StudentStudyPlanModal
   const hiddenStartedAtRef = useRef<number | null>(null);
   const hiddenAccumulatedMsRef = useRef(0);
   const interactionCountRef = useRef(0);
+  const pendingSubmissionRef = useRef<PendingStudySubmission<RecordStudyAttempt> | null>(null);
 
   const resetTracking = () => {
     startedAtRef.current = Date.now();
@@ -211,13 +220,14 @@ export function StudentStudyPlanModal({ isOpen, onClose }: StudentStudyPlanModal
     const durationSeconds = Math.max(1, Math.round((now - startedAtRef.current) / 1000));
     const idleSeconds = Math.max(0, Math.round(idleMs / 1000));
     const focusSeconds = Math.max(0, durationSeconds - idleSeconds);
-
-    setSubmitting(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const nextTask = await studentStudyPlanApi.record(selectedPlanId, {
+    const identity = [selectedPlanId, currentItem.studyDayTaskItemId, result].join(':');
+    const persistence = {
+      storageKey: `word:study-plan-modal:${selectedPlanId}`,
+    };
+    const pending = preparePendingStudySubmission<RecordStudyAttempt>(
+      pendingSubmissionRef.current,
+      identity,
+      () => ({
         metaWordId: currentItem.metaWordId,
         actionType: currentItem.taskType === 'NEW_LEARN' ? 'LEARN' : 'REVIEW',
         result,
@@ -226,7 +236,22 @@ export function StudentStudyPlanModal({ isOpen, onClose }: StudentStudyPlanModal
         idleSeconds,
         interactionCount: interactionCountRef.current,
         attentionState: resolveAttentionState(durationSeconds, idleSeconds),
-      });
+      }),
+      undefined,
+      persistence,
+    );
+    pendingSubmissionRef.current = pending;
+
+    setSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const nextTask = await studentStudyPlanApi.record(selectedPlanId, pending.payload);
+      pendingSubmissionRef.current = clearPendingStudySubmission(
+        pendingSubmissionRef.current,
+        persistence,
+      );
 
       const [nextPlans, nextAttentionStats] = await Promise.all([
         studentStudyPlanApi.listMine(),

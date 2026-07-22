@@ -27,10 +27,16 @@ public class UserService {
 
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final StudentPointAccountService studentPointAccountService;
 
-    public UserService(AppUserRepository appUserRepository, PasswordEncoder passwordEncoder) {
+    public UserService(
+            AppUserRepository appUserRepository,
+            PasswordEncoder passwordEncoder,
+            StudentPointAccountService studentPointAccountService
+    ) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.studentPointAccountService = studentPointAccountService;
     }
 
     @Transactional
@@ -48,7 +54,11 @@ public class UserService {
         user.setPhone(trimToNull(request.getPhone()));
         user.setRole(request.getRole());
         user.setStatus(UserStatus.ACTIVE);
-        return UserResponse.from(appUserRepository.save(user));
+        AppUser savedUser = appUserRepository.save(user);
+        if (savedUser.getRole() == UserRole.STUDENT) {
+            studentPointAccountService.createForStudent(savedUser.getId());
+        }
+        return UserResponse.from(savedUser);
     }
 
     @Transactional(readOnly = true)

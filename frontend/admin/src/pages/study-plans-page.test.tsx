@@ -40,7 +40,7 @@ const createdPlan = {
     dailyNewCount: 20,
     dailyReviewLimit: 60,
     reviewMode: "FIXED_INTERVAL",
-    reviewIntervals: [1, 3, 7, 14],
+    reviewIntervals: [0, 1, 3, 7, 14],
     completionThreshold: 85,
     dailyDeadlineTime: "21:00",
     attentionTrackingEnabled: true,
@@ -54,7 +54,7 @@ const createdPlan = {
 
 describe("StudyPlansPage", () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
         vi.mocked(api.listStudyPlans).mockResolvedValue([]);
         vi.mocked(api.listClassrooms).mockResolvedValue([]);
         vi.mocked(api.listDictionaries).mockResolvedValue([
@@ -100,13 +100,111 @@ describe("StudyPlansPage", () => {
         });
         fireEvent.click(screen.getByRole("option", { name: "CET-4 核心词汇 1200 词" }));
         fireEvent.click(screen.getByLabelText("高一 1 班"));
-        fireEvent.click(screen.getByRole("button", { name: "创建计划" }));
+        const createButton = screen.getByRole("button", { name: "创建计划" });
+        await waitFor(() => expect(createButton).toBeEnabled());
+        fireEvent.click(createButton);
 
         await waitFor(() => {
             expect(api.createStudyPlan).toHaveBeenCalledWith(
-                expect.objectContaining({ name: "四级计划", dictionaryId: 7, classroomIds: [12] }),
+                expect.objectContaining({
+                    name: "四级计划",
+                    dictionaryId: 7,
+                    classroomIds: [12],
+                    reviewIntervals: [0, 1, 3, 7, 14],
+                }),
             );
         });
+    });
+
+    it("blocks review intervals that do not start with zero and explains the correction", async () => {
+        vi.mocked(api.listClassrooms).mockResolvedValue([
+            {
+                id: 12,
+                name: "高一 1 班",
+                description: null,
+                teacherId: 1,
+                teacherName: "Admin",
+                studentCount: 3,
+            },
+        ]);
+        render(() => <StudyPlansPage />);
+
+        fireEvent.input(await screen.findByLabelText("计划名称"), {
+            target: { value: "四级计划" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "选择词书" }));
+        fireEvent.click(screen.getByRole("option", { name: "CET-4 核心词汇 1200 词" }));
+        fireEvent.click(screen.getByLabelText("高一 1 班"));
+        fireEvent.input(screen.getByLabelText("复习间隔"), {
+            target: { value: "1,3,7,14" },
+        });
+        const createButton = screen.getByRole("button", { name: "创建计划" });
+        await waitFor(() => expect(createButton).toBeEnabled());
+        fireEvent.click(createButton);
+
+        expect(await screen.findByText("复习间隔必须从 0 开始，例如：0,1,3,7,14。")).toBeInTheDocument();
+        expect(api.createStudyPlan).not.toHaveBeenCalled();
+    });
+
+    it("reloads the common dictionaries and clears an invalid selection when classrooms change", async () => {
+        vi.mocked(api.listClassrooms).mockResolvedValue([
+            {
+                id: 12,
+                name: "高一 1 班",
+                description: null,
+                teacherId: 1,
+                teacherName: "Admin",
+                studentCount: 3,
+            },
+        ]);
+        vi.mocked(api.listDictionaries)
+            .mockResolvedValueOnce([
+                { id: 7, name: "班级共同词书", wordCount: 1200 },
+                { id: 8, name: "未分配词书", wordCount: 860 },
+            ])
+            .mockResolvedValueOnce([
+                { id: 7, name: "班级共同词书", wordCount: 1200 },
+            ]);
+
+        render(() => <StudyPlansPage />);
+
+        fireEvent.click(await screen.findByRole("button", { name: "选择词书" }));
+        fireEvent.click(screen.getByRole("option", { name: "未分配词书 860 词" }));
+        fireEvent.click(screen.getByLabelText("高一 1 班"));
+
+        await waitFor(() => expect(api.listDictionaries).toHaveBeenLastCalledWith([12]));
+        expect(await screen.findByRole("button", { name: "选择词书" })).toBeInTheDocument();
+        expect(screen.getByText("所选词书不适用于当前班级，请重新选择共同可用的词书。")).toBeInTheDocument();
+    });
+
+    it("shows the backend reason when creating a study plan fails", async () => {
+        vi.mocked(api.listClassrooms).mockResolvedValue([
+            {
+                id: 12,
+                name: "高一 1 班",
+                description: null,
+                teacherId: 1,
+                teacherName: "Admin",
+                studentCount: 3,
+            },
+        ]);
+        vi.mocked(api.createStudyPlan).mockRejectedValue(
+            new Error("dictionaryId is not associated with all selected classrooms"),
+        );
+
+        render(() => <StudyPlansPage />);
+
+        fireEvent.input(await screen.findByLabelText("计划名称"), {
+            target: { value: "四级计划" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "选择词书" }));
+        fireEvent.click(screen.getByRole("option", { name: "CET-4 核心词汇 1200 词" }));
+        fireEvent.click(screen.getByLabelText("高一 1 班"));
+        const createButton = screen.getByRole("button", { name: "创建计划" });
+        await waitFor(() => expect(createButton).toBeEnabled());
+        fireEvent.click(createButton);
+
+        expect(await screen.findByText("所选词书未分配给全部班级，请重新选择。")).toBeInTheDocument();
     });
 
     it("shows an empty classroom state and disables creation when no classrooms are available", async () => {

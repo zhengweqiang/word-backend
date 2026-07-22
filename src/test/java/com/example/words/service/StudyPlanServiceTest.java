@@ -18,6 +18,7 @@ import com.example.words.dto.RecordStudyRequest;
 import com.example.words.dto.StudyPlanResponse;
 import com.example.words.dto.StudyTaskResponse;
 import com.example.words.exception.BadRequestException;
+import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.AppUser;
 import com.example.words.model.AttentionState;
 import com.example.words.model.Classroom;
@@ -125,6 +126,9 @@ class StudyPlanServiceTest {
     @Mock
     private StudentWordMemoryService studentWordMemoryService;
 
+    @Mock
+    private StudentPointEventPublisher studentPointEventPublisher;
+
     private StudyPlanService studyPlanService;
 
     @BeforeEach
@@ -147,6 +151,7 @@ class StudyPlanServiceTest {
                 accessControlService,
                 userService,
                 studentWordMemoryService,
+                studentPointEventPublisher,
                 new ObjectMapper()
         );
     }
@@ -574,7 +579,7 @@ class StudyPlanServiceTest {
         studyWordProgress.setPhase(0);
         studyWordProgress.setStatus(StudyWordProgressStatus.NEW);
 
-        when(studentStudyPlanRepository.findById(200L)).thenReturn(Optional.of(studentStudyPlan));
+        when(studentStudyPlanRepository.findByIdForUpdate(200L)).thenReturn(Optional.of(studentStudyPlan));
         when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
         when(studyDayTaskRepository.findByStudentStudyPlanIdAndTaskDateBeforeOrderByTaskDateAsc(200L, today))
                 .thenReturn(List.of());
@@ -590,6 +595,7 @@ class StudyPlanServiceTest {
         when(studyWordProgressRepository.save(any(StudyWordProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(studyRecordRepository.save(any(StudyRecord.class))).thenAnswer(invocation -> {
             StudyRecord studyRecord = invocation.getArgument(0);
+            studyRecord.setId(600L);
             savedRecordRef.set(studyRecord);
             return studyRecord;
         });
@@ -615,7 +621,8 @@ class StudyPlanServiceTest {
                 22,
                 4,
                 5,
-                AttentionState.FOCUSED
+                AttentionState.FOCUSED,
+                "study-request-600"
         );
 
         StudyTaskResponse response = studyPlanService.recordStudy(200L, request, student);
@@ -626,16 +633,172 @@ class StudyPlanServiceTest {
         assertEquals(BigDecimal.valueOf(100).setScale(2), response.getCompletionRate());
         assertNotNull(savedDailyStatRef.get());
         assertEquals(22, savedDailyStatRef.get().getTotalFocusSeconds());
+        assertTrue(savedRecordRef.get().isPointsEligible());
+        assertTrue(studyDayTask.isPointsEligible());
         verify(studyRecordRepository).save(any(StudyRecord.class));
         verify(studentWordMemoryService).recordPlanStudy(
                 eq(20L),
                 eq(3L),
-                eq(null),
+                eq(600L),
                 eq(10L),
                 eq(StudyRecordResult.CORRECT),
                 any(LocalDateTime.class)
         );
+        verify(studentPointEventPublisher).publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                20L,
+                600L,
+                "study-record:600:correct",
+                "STUDY_RECORD_CORRECT"
+        ));
+        verify(studentPointEventPublisher).publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                20L,
+                300L,
+                "study-day-task:300:completed",
+                "DAILY_TASK_COMPLETED"
+        ));
         verify(studentAttentionDailyStatRepository).save(any(StudentAttentionDailyStat.class));
+    }
+
+    @Test
+    void recordStudyShouldNotPublishCorrectEventForIncorrectAnswer() {
+        RecordStudyScenario scenario = prepareRecordStudyScenario(
+                StudyRecordResult.INCORRECT,
+                StudyDayTaskStatus.IN_PROGRESS,
+                2,
+                0,
+                null,
+                601L
+        );
+
+        studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        verify(studentPointEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void recordStudyShouldPublishDailyEventOnFirstCompletedTransition() {
+        RecordStudyScenario scenario = prepareRecordStudyScenario(
+                StudyRecordResult.SKIPPED,
+                StudyDayTaskStatus.IN_PROGRESS,
+                2,
+                1,
+                null,
+                602L
+        );
+
+        studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        verify(studentPointEventPublisher).publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                20L,
+                300L,
+                "study-day-task:300:completed",
+                "DAILY_TASK_COMPLETED"
+        ));
+        verify(studentPointEventPublisher, times(1)).publishAfterCommit(any());
+    }
+
+    @Test
+    void recordStudyShouldNotPublishDailyEventForAlreadyCompletedTask() {
+        RecordStudyScenario scenario = prepareRecordStudyScenario(
+                StudyRecordResult.CORRECT,
+                StudyDayTaskStatus.COMPLETED,
+                1,
+                1,
+                LocalDateTime.now(),
+                603L
+        );
+
+        studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        verify(studentPointEventPublisher).publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                20L,
+                603L,
+                "study-record:603:correct",
+                "STUDY_RECORD_CORRECT"
+        ));
+        verify(studentPointEventPublisher, times(1)).publishAfterCommit(any());
+    }
+
+    @Test
+    void recordStudyShouldReturnCurrentTaskWithoutMutationsForExactReplay() {
+        ReplayScenario scenario = prepareReplayScenario(StudyRecordResult.CORRECT);
+
+        StudyTaskResponse response = studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        assertEquals(StudyDayTaskStatus.COMPLETED, response.getStatus());
+        verify(studyRecordRepository, never()).save(any());
+        verify(studyWordProgressRepository, never()).save(any());
+        verify(studentPointEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void recordStudyShouldRejectRequestKeyReplayWithDifferentPayload() {
+        ReplayScenario scenario = prepareReplayScenario(StudyRecordResult.INCORRECT);
+
+        StudentPointOperationException exception = assertThrows(
+                StudentPointOperationException.class,
+                () -> studyPlanService.recordStudy(200L, scenario.request(), scenario.student())
+        );
+
+        assertEquals("IDEMPOTENCY_KEY_CONFLICT", exception.getCode());
+        verify(studyRecordRepository, never()).save(any());
+        verify(studentPointEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void recordStudyShouldReplayWhenNullInteractionNormalizesToZero() {
+        ReplayScenario scenario = prepareReplayScenario(
+                StudyRecordResult.CORRECT,
+                26, 22, 4, null,
+                26, 22, 4, 0
+        );
+
+        StudyTaskResponse response = studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        assertEquals(StudyDayTaskStatus.COMPLETED, response.getStatus());
+        verify(studyRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void recordStudyShouldReplayWhenFocusBelowMinimumNormalizesToZero() {
+        ReplayScenario scenario = prepareReplayScenario(
+                StudyRecordResult.CORRECT,
+                10, 2, 8, 1,
+                10, 0, 8, 1
+        );
+
+        StudyTaskResponse response = studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        assertEquals(StudyDayTaskStatus.COMPLETED, response.getStatus());
+        verify(studyRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void recordStudyShouldReplayWhenIdleIsClampedToDurationRemainder() {
+        ReplayScenario scenario = prepareReplayScenario(
+                StudyRecordResult.CORRECT,
+                5, 4, 10, 1,
+                5, 4, 1, 1
+        );
+
+        StudyTaskResponse response = studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        assertEquals(StudyDayTaskStatus.COMPLETED, response.getStatus());
+        verify(studyRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void recordStudyShouldReplayWhenNullDurationNormalizesToFocusPlusIdle() {
+        ReplayScenario scenario = prepareReplayScenario(
+                StudyRecordResult.CORRECT,
+                null, 10, 7, 1,
+                17, 10, 7, 1
+        );
+
+        StudyTaskResponse response = studyPlanService.recordStudy(200L, scenario.request(), scenario.student());
+
+        assertEquals(StudyDayTaskStatus.COMPLETED, response.getStatus());
+        verify(studyRecordRepository, never()).save(any());
     }
 
     @Test
@@ -709,7 +872,7 @@ class StudyPlanServiceTest {
         preferredProgress.setLastReviewAt(today.minusDays(1).atTime(10, 0));
         preferredProgress.setStatus(StudyWordProgressStatus.REVIEWING);
 
-        when(studentStudyPlanRepository.findById(200L)).thenReturn(Optional.of(studentStudyPlan));
+        when(studentStudyPlanRepository.findByIdForUpdate(200L)).thenReturn(Optional.of(studentStudyPlan));
         when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
         when(studyDayTaskRepository.findByStudentStudyPlanIdAndTaskDateBeforeOrderByTaskDateAsc(200L, today))
                 .thenReturn(List.of());
@@ -754,7 +917,8 @@ class StudyPlanServiceTest {
                 22,
                 4,
                 5,
-                AttentionState.FOCUSED
+                AttentionState.FOCUSED,
+                "study-request-duplicate-progress"
         );
 
         StudyTaskResponse response = studyPlanService.recordStudy(200L, request, student);
@@ -764,6 +928,192 @@ class StudyPlanServiceTest {
         assertEquals(501L, savedProgressRef.get().getId());
         assertNotNull(savedRecordRef.get());
         assertEquals(2, savedRecordRef.get().getStageBefore());
+    }
+
+    private RecordStudyScenario prepareRecordStudyScenario(
+            StudyRecordResult result,
+            StudyDayTaskStatus initialTaskStatus,
+            int totalTaskCount,
+            int completedCount,
+            LocalDateTime itemCompletedAt,
+            Long savedRecordId
+    ) {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        AppUser student = new AppUser();
+        student.setId(20L);
+        student.setRole(UserRole.STUDENT);
+
+        StudyPlan studyPlan = new StudyPlan();
+        studyPlan.setId(55L);
+        studyPlan.setDictionaryId(10L);
+        studyPlan.setTimezone("Asia/Shanghai");
+        studyPlan.setStartDate(today.minusDays(1));
+        studyPlan.setReviewIntervalsJson("[0,1,2]");
+        studyPlan.setStatus(StudyPlanStatus.PUBLISHED);
+        studyPlan.setMinFocusSecondsPerWord(3);
+        studyPlan.setMaxFocusSecondsPerWord(120);
+        studyPlan.setLongStayWarningSeconds(60);
+
+        StudentStudyPlan studentStudyPlan = new StudentStudyPlan();
+        studentStudyPlan.setId(200L);
+        studentStudyPlan.setStudyPlanId(55L);
+        studentStudyPlan.setStudentId(20L);
+
+        StudyDayTask studyDayTask = new StudyDayTask();
+        studyDayTask.setId(300L);
+        studyDayTask.setStudentStudyPlanId(200L);
+        studyDayTask.setTaskDate(today);
+        studyDayTask.setNewCount(totalTaskCount);
+        studyDayTask.setReviewCount(0);
+        studyDayTask.setOverdueCount(0);
+        studyDayTask.setCompletedCount(completedCount);
+        studyDayTask.setStatus(initialTaskStatus);
+        studyDayTask.setDeadlineAt(today.atTime(21, 30));
+
+        StudyDayTaskItem taskItem = new StudyDayTaskItem();
+        taskItem.setId(400L);
+        taskItem.setStudyDayTaskId(300L);
+        taskItem.setMetaWordId(3L);
+        taskItem.setTaskType(StudyTaskType.NEW_LEARN);
+        taskItem.setTaskOrder(1);
+        taskItem.setCompletedAt(itemCompletedAt);
+
+        StudyWordProgress progress = new StudyWordProgress();
+        progress.setId(500L);
+        progress.setStudentStudyPlanId(200L);
+        progress.setMetaWordId(3L);
+        progress.setAssignedDate(today);
+
+        when(studentStudyPlanRepository.findByIdForUpdate(200L)).thenReturn(Optional.of(studentStudyPlan));
+        when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
+        when(studyDayTaskRepository.findByStudentStudyPlanIdAndTaskDateBeforeOrderByTaskDateAsc(200L, today))
+                .thenReturn(List.of());
+        when(studyDayTaskRepository.findByStudentStudyPlanIdAndTaskDateOrderByCreatedAtAsc(200L, today))
+                .thenReturn(List.of(studyDayTask));
+        when(studyDayTaskItemRepository.findByStudyDayTaskIdAndMetaWordIdOrderByCreatedAtAsc(300L, 3L))
+                .thenReturn(List.of(taskItem));
+        when(dictionaryWordRepository.existsByDictionaryIdAndMetaWordId(10L, 3L)).thenReturn(true);
+        when(studyRecordRepository.findByStudentStudyPlanIdAndTaskDate(200L, today)).thenReturn(List.of());
+        when(studyWordProgressRepository.findByStudentStudyPlanIdAndMetaWordId(200L, 3L))
+                .thenReturn(List.of(progress));
+        when(studyWordProgressRepository.save(any(StudyWordProgress.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(studyRecordRepository.save(any(StudyRecord.class))).thenAnswer(invocation -> {
+            StudyRecord record = invocation.getArgument(0);
+            record.setId(savedRecordId);
+            return record;
+        });
+        lenient().when(studyDayTaskItemRepository.save(any(StudyDayTaskItem.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(studentAttentionDailyStatRepository.findByStudentStudyPlanIdAndTaskDateOrderByCreatedAtAsc(200L, today))
+                .thenReturn(List.of());
+        when(studentAttentionDailyStatRepository.save(any(StudentAttentionDailyStat.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(studentAttentionDailyStatRepository.findByStudentStudyPlanIdOrderByTaskDateDesc(200L))
+                .thenReturn(List.of());
+        when(studyDayTaskItemRepository.findByStudyDayTaskIdOrderByTaskOrderAsc(300L))
+                .thenReturn(List.of(taskItem));
+        when(studyWordProgressRepository.findByStudentStudyPlanId(200L)).thenReturn(List.of(progress));
+
+        RecordStudyRequest request = new RecordStudyRequest(
+                3L,
+                StudyActionType.LEARN,
+                result,
+                26,
+                22,
+                4,
+                5,
+                AttentionState.FOCUSED,
+                "study-request-" + savedRecordId
+        );
+        return new RecordStudyScenario(student, request);
+    }
+
+    private ReplayScenario prepareReplayScenario(StudyRecordResult replayResult) {
+        return prepareReplayScenario(
+                replayResult,
+                26, 22, 4, 5,
+                26, 22, 4, 5
+        );
+    }
+
+    private ReplayScenario prepareReplayScenario(
+            StudyRecordResult replayResult,
+            Integer requestDuration,
+            Integer requestFocus,
+            Integer requestIdle,
+            Integer requestInteraction,
+            Integer persistedDuration,
+            Integer persistedFocus,
+            Integer persistedIdle,
+            Integer persistedInteraction
+    ) {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        AppUser student = new AppUser();
+        student.setId(20L);
+        student.setRole(UserRole.STUDENT);
+
+        StudentStudyPlan studentStudyPlan = new StudentStudyPlan();
+        studentStudyPlan.setId(200L);
+        studentStudyPlan.setStudentId(20L);
+        studentStudyPlan.setStudyPlanId(55L);
+
+        StudyPlan studyPlan = new StudyPlan();
+        studyPlan.setId(55L);
+        studyPlan.setMinFocusSecondsPerWord(3);
+        studyPlan.setMaxFocusSecondsPerWord(120);
+
+        StudyRecord existing = StudyRecord.builder()
+                .id(700L)
+                .requestKey("replay-key")
+                .studentStudyPlanId(200L)
+                .metaWordId(3L)
+                .taskDate(today)
+                .actionType(StudyActionType.LEARN)
+                .result(StudyRecordResult.CORRECT)
+                .durationSeconds(persistedDuration)
+                .focusSeconds(persistedFocus)
+                .idleSeconds(persistedIdle)
+                .interactionCount(persistedInteraction)
+                .attentionState(AttentionState.FOCUSED)
+                .build();
+
+        StudyDayTask task = new StudyDayTask();
+        task.setId(300L);
+        task.setStudentStudyPlanId(200L);
+        task.setTaskDate(today);
+        task.setNewCount(1);
+        task.setCompletedCount(1);
+        task.setStatus(StudyDayTaskStatus.COMPLETED);
+        task.setDeadlineAt(today.atTime(21, 30));
+
+        when(studentStudyPlanRepository.findByIdForUpdate(200L)).thenReturn(Optional.of(studentStudyPlan));
+        lenient().when(studyPlanRepository.findById(55L)).thenReturn(Optional.of(studyPlan));
+        when(studyRecordRepository.findByRequestKey("replay-key")).thenReturn(Optional.of(existing));
+        lenient().when(studyDayTaskRepository
+                        .findByStudentStudyPlanIdAndTaskDateOrderByCreatedAtAsc(200L, today))
+                .thenReturn(List.of(task));
+        lenient().when(studyDayTaskItemRepository.findByStudyDayTaskIdOrderByTaskOrderAsc(300L))
+                .thenReturn(List.of());
+
+        RecordStudyRequest request = new RecordStudyRequest(
+                3L,
+                StudyActionType.LEARN,
+                replayResult,
+                requestDuration,
+                requestFocus,
+                requestIdle,
+                requestInteraction,
+                AttentionState.FOCUSED,
+                "replay-key"
+        );
+        return new ReplayScenario(student, request);
+    }
+
+    private record RecordStudyScenario(AppUser student, RecordStudyRequest request) {
+    }
+
+    private record ReplayScenario(AppUser student, RecordStudyRequest request) {
     }
 
     private Classroom classroom(Long id, String name, Long teacherId) {

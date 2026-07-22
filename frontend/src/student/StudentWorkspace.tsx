@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, House, Notebook, UserCircle, UsersThree } from '@phosphor-icons/react';
+import { BookOpen, Coins, House, UserCircle, UsersThree } from '@phosphor-icons/react';
 import { studentDashboardApi } from '../api';
 import type { Dictionary, StudentDashboard, User } from '../types';
 import { StudentClassrooms } from './StudentClassrooms';
 import { StudentDashboardHome } from './StudentDashboardHome';
 import { StudentLibrary } from './StudentLibrary';
+import { StudentPoints } from './StudentPoints';
 import { StudentProfile } from './StudentProfile';
 import { StudentStudySession } from './StudentStudySession';
 import './student-workspace.css';
 
-type StudentTab = 'home' | 'study' | 'library' | 'classrooms' | 'profile';
+type StudentTab = 'home' | 'study' | 'points' | 'classrooms' | 'profile' | 'library';
 
 interface StudentWorkspaceProps {
   user: User;
@@ -20,7 +21,7 @@ interface StudentWorkspaceProps {
 const navItems = [
   { id: 'home' as const, label: '首页', icon: House },
   { id: 'study' as const, label: '学习', icon: BookOpen },
-  { id: 'library' as const, label: '词库', icon: Notebook },
+  { id: 'points' as const, label: '积分', icon: Coins },
   { id: 'classrooms' as const, label: '班级', icon: UsersThree },
   { id: 'profile' as const, label: '我的', icon: UserCircle },
 ];
@@ -59,10 +60,11 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
       void loadDashboard();
     }
   };
+  const currentPageLabel = tab === 'library' ? '词库' : navItems.find((item) => item.id === tab)?.label;
 
   return (
     <main className="prototype-shell">
-      <div className="phone-frame" aria-label={`学生工作台，当前页面：${navItems.find((item) => item.id === tab)?.label}`}>
+      <div className="phone-frame" aria-label={`学生工作台，当前页面：${currentPageLabel}`}>
         <div className="phone-scroll" ref={scrollRef}>
           {loading && (tab === 'home' || tab === 'study') && (
             <div className="student-loading"><span />正在整理今日任务...</div>
@@ -90,6 +92,7 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
             />
           )}
           {tab === 'library' && <StudentLibrary dictionaries={dictionaries} initialDictionaryId={libraryDictionaryId} />}
+          {tab === 'points' && <StudentPoints />}
           {tab === 'classrooms' && (
             <StudentClassrooms
               onOpenDictionary={(dictionaryId) => {
@@ -110,7 +113,13 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
             const Icon = item.icon;
             const active = tab === item.id;
             return (
-              <button type="button" key={item.id} className={active ? 'is-active' : ''} onClick={() => openTab(item.id)}>
+              <button
+                type="button"
+                key={item.id}
+                className={active ? 'is-active' : ''}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => openTab(item.id)}
+              >
                 <Icon size={27} weight={active ? 'fill' : 'regular'} />
                 <span>{item.label}</span>
               </button>

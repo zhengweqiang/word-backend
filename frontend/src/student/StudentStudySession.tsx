@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { CaretRight, Clock } from '@phosphor-icons/react';
 import { studentDashboardApi } from '../api';
-import type { StudentDashboard, StudentDashboardTaskItem, StudyRecordResult } from '../types';
+import type {
+  StudentDashboard,
+  StudentDashboardRecordPayload,
+  StudentDashboardTaskItem,
+  StudyRecordResult,
+} from '../types';
 import { SyllableReader } from './SyllableReader';
 import { taskTypeLabel } from './student-workspace-state';
+import {
+  clearPendingStudySubmission,
+  preparePendingStudySubmission,
+  type PendingStudySubmission,
+} from './study-submission-idempotency';
+
+type StudentDashboardRecordAttempt = Omit<StudentDashboardRecordPayload, 'requestKey'>;
 
 interface StudentStudySessionProps {
   dashboard: StudentDashboard;
@@ -17,6 +29,7 @@ export function StudentStudySession({ dashboard, onDashboardChange, onBackHome }
   const hiddenAtRef = useRef<number | null>(null);
   const hiddenSecondsRef = useRef(0);
   const interactionCountRef = useRef(0);
+  const pendingSubmissionRef = useRef<PendingStudySubmission<StudentDashboardRecordAttempt> | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,9 +76,18 @@ export function StudentStudySession({ dashboard, onDashboardChange, onBackHome }
     const idleSeconds = Math.min(durationSeconds, hiddenSecondsRef.current + currentHiddenSeconds);
     const focusSeconds = Math.max(0, durationSeconds - idleSeconds);
     const focusRatio = focusSeconds / durationSeconds;
-
-    try {
-      const nextDashboard = await studentDashboardApi.record({
+    const identity = [
+      current.studentStudyPlanId,
+      current.studyDayTaskItemId,
+      result,
+    ].join(':');
+    const persistence = {
+      storageKey: `word:student-dashboard-study:${current.studentStudyPlanId}`,
+    };
+    const pending = preparePendingStudySubmission<StudentDashboardRecordAttempt>(
+      pendingSubmissionRef.current,
+      identity,
+      () => ({
         studentStudyPlanId: current.studentStudyPlanId,
         metaWordId: current.metaWordId,
         actionType: current.taskType === 'NEW_LEARN' ? 'LEARN' : 'REVIEW',
@@ -75,7 +97,18 @@ export function StudentStudySession({ dashboard, onDashboardChange, onBackHome }
         idleSeconds,
         interactionCount: interactionCountRef.current,
         attentionState: focusRatio >= 0.8 ? 'FOCUSED' : focusRatio >= 0.45 ? 'MIXED' : 'IDLE',
-      });
+      }),
+      undefined,
+      persistence,
+    );
+    pendingSubmissionRef.current = pending;
+
+    try {
+      const nextDashboard = await studentDashboardApi.record(pending.payload);
+      pendingSubmissionRef.current = clearPendingStudySubmission(
+        pendingSubmissionRef.current,
+        persistence,
+      );
       onDashboardChange(nextDashboard);
     } catch (recordError) {
       setNotice(null);

@@ -13,6 +13,7 @@ import com.example.words.dto.StudyTaskItemResponse;
 import com.example.words.dto.StudyTaskResponse;
 import com.example.words.exception.BadRequestException;
 import com.example.words.exception.ResourceNotFoundException;
+import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
 import com.example.words.model.ClassroomMember;
@@ -69,6 +70,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
@@ -93,6 +95,7 @@ public class StudyPlanService {
     private final AccessControlService accessControlService;
     private final UserService userService;
     private final StudentWordMemoryService studentWordMemoryService;
+    private final StudentPointEventPublisher studentPointEventPublisher;
     private final ObjectMapper objectMapper;
 
     public StudyPlanService(
@@ -113,6 +116,7 @@ public class StudyPlanService {
             AccessControlService accessControlService,
             UserService userService,
             StudentWordMemoryService studentWordMemoryService,
+            StudentPointEventPublisher studentPointEventPublisher,
             ObjectMapper objectMapper) {
         this.studyPlanRepository = studyPlanRepository;
         this.studyPlanClassroomRepository = studyPlanClassroomRepository;
@@ -131,6 +135,7 @@ public class StudyPlanService {
         this.accessControlService = accessControlService;
         this.userService = userService;
         this.studentWordMemoryService = studentWordMemoryService;
+        this.studentPointEventPublisher = studentPointEventPublisher;
         this.objectMapper = objectMapper;
     }
 
@@ -399,8 +404,15 @@ public class StudyPlanService {
 
     @Transactional
     public StudyTaskResponse recordStudy(Long studentStudyPlanId, RecordStudyRequest request, AppUser actor) {
-        StudentStudyPlan studentStudyPlan = getStudentStudyPlanEntity(studentStudyPlanId);
+        StudentStudyPlan studentStudyPlan = studentStudyPlanRepository.findByIdForUpdate(studentStudyPlanId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Student study plan not found: " + studentStudyPlanId));
         ensureStudentOwnsPlan(actor, studentStudyPlan);
+
+        StudyRecord replayedRecord = studyRecordRepository.findByRequestKey(request.getRequestKey()).orElse(null);
+        if (replayedRecord != null) {
+            return replayStudyRequest(studentStudyPlan, request, replayedRecord);
+        }
 
         StudyPlan studyPlan = getStudyPlanEntity(studentStudyPlan.getStudyPlanId());
         ensurePublished(studyPlan);
@@ -409,6 +421,7 @@ public class StudyPlanService {
 
         markExpiredTasks(studentStudyPlan, taskDate);
         StudyDayTask studyDayTask = getOrCreateTodayTask(studentStudyPlan, studyPlan, taskDate);
+        boolean taskWasCompleted = studyDayTask.getStatus() == StudyDayTaskStatus.COMPLETED;
         StudyDayTaskItem taskItem = findStudyDayTaskItem(studyDayTask.getId(), request.getMetaWordId())
                 .orElseThrow(() -> new BadRequestException("Word is not scheduled for today's task"));
 
@@ -424,29 +437,41 @@ public class StudyPlanService {
         StudyWordProgress studyWordProgress = findStudyWordProgress(studentStudyPlanId, request.getMetaWordId())
                 .orElseGet(() -> createProgressForExistingItem(studentStudyPlanId, request.getMetaWordId(), taskDate, taskItem));
 
-        int focusSeconds = normalizeFocusSeconds(request.getFocusSeconds(), request.getDurationSeconds(), studyPlan);
-        int idleSeconds = normalizeIdleSeconds(request.getIdleSeconds(), request.getDurationSeconds(), focusSeconds);
-        int durationSeconds = normalizeDurationSeconds(request.getDurationSeconds(), focusSeconds, idleSeconds);
-        int interactionCount = request.getInteractionCount() == null ? 0 : request.getInteractionCount();
+        NormalizedStudyTiming timing = normalizeStudyTiming(request, studyPlan);
+        int focusSeconds = timing.focusSeconds();
+        int idleSeconds = timing.idleSeconds();
+        int durationSeconds = timing.durationSeconds();
+        int interactionCount = timing.interactionCount();
         int stageBefore = studyWordProgress.getPhase() == null ? 0 : studyWordProgress.getPhase();
 
         updateProgress(studyWordProgress, request.getResult(), reviewIntervals, now, focusSeconds);
         StudyWordProgress savedProgress = studyWordProgressRepository.save(studyWordProgress);
 
-        StudyRecord studyRecord = new StudyRecord();
-        studyRecord.setStudentStudyPlanId(studentStudyPlanId);
-        studyRecord.setMetaWordId(request.getMetaWordId());
-        studyRecord.setTaskDate(taskDate);
-        studyRecord.setActionType(request.getActionType());
-        studyRecord.setResult(request.getResult());
-        studyRecord.setDurationSeconds(durationSeconds);
-        studyRecord.setFocusSeconds(focusSeconds);
-        studyRecord.setIdleSeconds(idleSeconds);
-        studyRecord.setInteractionCount(interactionCount);
-        studyRecord.setAttentionState(request.getAttentionState());
-        studyRecord.setStageBefore(stageBefore);
-        studyRecord.setStageAfter(savedProgress.getPhase());
-        StudyRecord savedStudyRecord = studyRecordRepository.save(studyRecord);
+        StudyRecord studyRecord = StudyRecord.builder()
+                .requestKey(request.getRequestKey())
+                .studentStudyPlanId(studentStudyPlanId)
+                .metaWordId(request.getMetaWordId())
+                .taskDate(taskDate)
+                .actionType(request.getActionType())
+                .result(request.getResult())
+                .durationSeconds(durationSeconds)
+                .focusSeconds(focusSeconds)
+                .idleSeconds(idleSeconds)
+                .interactionCount(interactionCount)
+                .pointsEligible(true)
+                .attentionState(request.getAttentionState())
+                .stageBefore(stageBefore)
+                .stageAfter(savedProgress.getPhase())
+                .build();
+        StudyRecord savedStudyRecord;
+        try {
+            savedStudyRecord = studyRecordRepository.save(studyRecord);
+        } catch (DataIntegrityViolationException exception) {
+            if (containsConstraint(exception, "uk_study_records_request_key")) {
+                throw studyRequestIdempotencyConflict();
+            }
+            throw exception;
+        }
         if (studentWordMemoryService != null) {
             studentWordMemoryService.recordPlanStudy(
                     studentStudyPlan.getStudentId(),
@@ -481,7 +506,85 @@ public class StudyPlanService {
         studentStudyPlanRepository.save(studentStudyPlan);
         studyDayTaskRepository.save(studyDayTask);
 
+        if (savedStudyRecord.isPointsEligible() && request.getResult() == StudyRecordResult.CORRECT) {
+            studentPointEventPublisher.publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                    studentStudyPlan.getStudentId(),
+                    savedStudyRecord.getId(),
+                    "study-record:" + savedStudyRecord.getId() + ":correct",
+                    "STUDY_RECORD_CORRECT"
+            ));
+        }
+        if (!taskWasCompleted
+                && studyDayTask.isPointsEligible()
+                && studyDayTask.getStatus() == StudyDayTaskStatus.COMPLETED) {
+            studentPointEventPublisher.publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                    studentStudyPlan.getStudentId(),
+                    studyDayTask.getId(),
+                    "study-day-task:" + studyDayTask.getId() + ":completed",
+                    "DAILY_TASK_COMPLETED"
+            ));
+        }
+
         return toStudyTaskResponse(studentStudyPlan, studyDayTask);
+    }
+
+    private StudyTaskResponse replayStudyRequest(
+            StudentStudyPlan studentStudyPlan,
+            RecordStudyRequest request,
+            StudyRecord existing
+    ) {
+        StudyPlan studyPlan = getStudyPlanEntity(studentStudyPlan.getStudyPlanId());
+        NormalizedStudyTiming timing = normalizeStudyTiming(request, studyPlan);
+        if (!matchesStudyRequest(studentStudyPlan.getId(), request, timing, existing)) {
+            throw studyRequestIdempotencyConflict();
+        }
+        StudyDayTask task = studyDayTaskRepository
+                .findByStudentStudyPlanIdAndTaskDateOrderByCreatedAtAsc(
+                        studentStudyPlan.getId(),
+                        existing.getTaskDate()
+                )
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Study day task not found for replayed request: " + request.getRequestKey()));
+        return toStudyTaskResponse(studentStudyPlan, task);
+    }
+
+    private boolean matchesStudyRequest(
+            Long studentStudyPlanId,
+            RecordStudyRequest request,
+            NormalizedStudyTiming timing,
+            StudyRecord existing
+    ) {
+        return Objects.equals(existing.getStudentStudyPlanId(), studentStudyPlanId)
+                && Objects.equals(existing.getMetaWordId(), request.getMetaWordId())
+                && existing.getActionType() == request.getActionType()
+                && existing.getResult() == request.getResult()
+                && Objects.equals(existing.getDurationSeconds(), timing.durationSeconds())
+                && Objects.equals(existing.getFocusSeconds(), timing.focusSeconds())
+                && Objects.equals(existing.getIdleSeconds(), timing.idleSeconds())
+                && Objects.equals(existing.getInteractionCount(), timing.interactionCount())
+                && existing.getAttentionState() == request.getAttentionState();
+    }
+
+    private StudentPointOperationException studyRequestIdempotencyConflict() {
+        return new StudentPointOperationException(
+                "IDEMPOTENCY_KEY_CONFLICT",
+                HttpStatus.CONFLICT,
+                "Study request key is already used by a different payload"
+        );
+    }
+
+    private boolean containsConstraint(RuntimeException exception, String constraintName) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains(constraintName.toLowerCase())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @Transactional(readOnly = true)
@@ -974,6 +1077,7 @@ public class StudyPlanService {
             if (studyDayTask.getStatus() != StudyDayTaskStatus.COMPLETED) {
                 studyDayTask.setStatus(StudyDayTaskStatus.COMPLETED);
                 studyDayTask.setCompletedAt(LocalDateTime.now());
+                studyDayTask.setPointsEligible(true);
                 studentStudyPlan.setCompletedDays(studentStudyPlan.getCompletedDays() + 1);
             }
         } else if (studyDayTask.getCompletedCount() > 0 && studyDayTask.getStatus() == StudyDayTaskStatus.NOT_STARTED) {
@@ -1328,6 +1432,22 @@ public class StudyPlanService {
             return focusSeconds + idleSeconds;
         }
         return Math.max(durationSeconds, focusSeconds + idleSeconds);
+    }
+
+    private NormalizedStudyTiming normalizeStudyTiming(RecordStudyRequest request, StudyPlan studyPlan) {
+        int focusSeconds = normalizeFocusSeconds(request.getFocusSeconds(), request.getDurationSeconds(), studyPlan);
+        int idleSeconds = normalizeIdleSeconds(request.getIdleSeconds(), request.getDurationSeconds(), focusSeconds);
+        int durationSeconds = normalizeDurationSeconds(request.getDurationSeconds(), focusSeconds, idleSeconds);
+        int interactionCount = request.getInteractionCount() == null ? 0 : request.getInteractionCount();
+        return new NormalizedStudyTiming(durationSeconds, focusSeconds, idleSeconds, interactionCount);
+    }
+
+    private record NormalizedStudyTiming(
+            int durationSeconds,
+            int focusSeconds,
+            int idleSeconds,
+            int interactionCount
+    ) {
     }
 
     private LocalDate resolveToday(StudyPlan studyPlan) {
