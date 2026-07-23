@@ -3,6 +3,7 @@ package com.example.words.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.words.dto.ClassroomGroupFeedMessageResponse;
@@ -74,6 +75,9 @@ class ClassroomGroupFeedServiceTest {
     @Mock
     private VideoAssetService videoAssetService;
 
+    @Mock
+    private StudentPointEventPublisher studentPointEventPublisher;
+
     private ClassroomGroupFeedService service;
 
     @BeforeEach
@@ -89,7 +93,8 @@ class ClassroomGroupFeedServiceTest {
                 studyPlanClassroomRepository,
                 accessControlService,
                 appUserRepository,
-                videoAssetService
+                videoAssetService,
+                studentPointEventPublisher
         );
     }
 
@@ -230,6 +235,31 @@ class ClassroomGroupFeedServiceTest {
         assertThat(responses)
                 .extracting(ClassroomGroupFeedMessageResponse::getContent)
                 .contains("Hello class");
+    }
+
+    @Test
+    void studentCompletingSharedVideoPublishesVideoWatchPointEvent() {
+        AppUser student = user(20L, "Student", UserRole.STUDENT);
+        Classroom classroom = classroom(100L, 7L);
+        VideoAsset video = readyPublishedVideo(30L);
+
+        when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom));
+        when(classroomMemberRepository.existsByClassroomIdAndStudentId(100L, 20L)).thenReturn(true);
+        when(classroomGroupFeedMessageRepository.existsByClassroomIdAndMessageTypeAndResourceId(
+                100L,
+                ClassroomGroupFeedMessageType.VIDEO,
+                30L
+        )).thenReturn(true);
+        when(videoAssetRepository.findById(30L)).thenReturn(Optional.of(video));
+
+        service.completeVideoPlayback(100L, 30L, student);
+
+        verify(studentPointEventPublisher).publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                20L,
+                30L,
+                "classroom-video:100:30:student:20:completed",
+                "VIDEO_WATCH"
+        ));
     }
 
     private AppUser user(Long id, String displayName, UserRole role) {

@@ -36,6 +36,12 @@ test('student video player uses a landscape toggle next to the close button', ()
   assert.doesNotMatch(playerSource, /全屏/);
 });
 
+test('student video player reports classroom video completion when playback ends', () => {
+  assert.match(playerSource, /completeVideoPlayback/);
+  assert.match(playerSource, /studentVideoApi\.completeFromClassroomFeed/);
+  assert.match(playerSource, /onEnded=\{\(\)\s*=>\s*void completeVideoPlayback\(\)\}/);
+});
+
 test('student video player landscape panel uses the portrait height as its width', () => {
   const orientationButtonRule = ruleFor('.student-player__orientation');
   const landscapePanelRule = ruleFor('.student-player__panel--landscape');

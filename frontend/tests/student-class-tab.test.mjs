@@ -19,6 +19,8 @@ test('student API exposes classroom and group feed methods', () => {
   assert.match(api, /getMyClassrooms:/);
   assert.match(api, /listClassroomGroupFeedMessages:/);
   assert.match(api, /createClassroomGroupFeedTextMessage:/);
+  assert.match(api, /completeFromClassroomFeed:/);
+  assert.match(api, /\/classrooms\/\$\{classroomId\}\/group-feed\/videos\/\$\{videoId\}\/complete/);
 });
 
 test('student classroom feed treats study plan messages as learning resources', () => {

@@ -74,6 +74,7 @@ export type PointSourceType =
 export interface AdminStudentPointAccountResponse {
     accountId: number;
     studentId: number;
+    studentUsername?: string | null;
     studentName: string;
     availablePoints: number;
     frozenPoints: number;
@@ -87,6 +88,8 @@ export interface StudentPointTransactionResponse {
     id: number;
     accountId: number;
     studentId: number;
+    studentUsername?: string | null;
+    studentName?: string | null;
     transactionType: PointTransactionType;
     amount: number;
     balanceBefore: number;
@@ -105,6 +108,8 @@ export interface StudentPointTransactionResponse {
 export interface StudentPointEventResponse {
     id: number;
     studentId: number;
+    studentUsername?: string | null;
+    studentName?: string | null;
     sourceType: PointSourceType;
     sourceId?: number | null;
     sourceKey: string;
@@ -161,7 +166,7 @@ export interface StudentPointRuleCreatePayload {
     scopeType?: string;
     scopeId?: number;
     enabled: boolean;
-    reason: string;
+    reason?: string;
 }
 
 export type StudentPointRuleUpdatePayload = Omit<StudentPointRuleCreatePayload, "code">;

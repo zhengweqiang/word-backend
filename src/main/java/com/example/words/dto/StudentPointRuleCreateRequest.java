@@ -14,6 +14,6 @@ public record StudentPointRuleCreateRequest(
         String scopeType,
         Long scopeId,
         Boolean enabled,
-        @NotBlank @Size(max = 500) String reason
+        @Size(max = 500) String reason
 ) {
 }

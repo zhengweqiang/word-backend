@@ -25,6 +25,8 @@ vi.mock("@/lib/api", () => ({
         listPointRules: vi.fn(),
         createPointRule: vi.fn(),
         updatePointRule: vi.fn(),
+        listClassrooms: vi.fn(),
+        listStudyPlans: vi.fn(),
         listTeacherPointStudents: vi.fn(),
         getTeacherStudentPointSummary: vi.fn(),
         listTeacherStudentPointTransactions: vi.fn(),
@@ -52,6 +54,8 @@ describe("PointsPage", () => {
         vi.mocked(api.listAdminPointTransactions).mockResolvedValue(page([]));
         vi.mocked(api.listAdminPointEvents).mockResolvedValue(page([]));
         vi.mocked(api.listPointRules).mockResolvedValue([]);
+        vi.mocked(api.listClassrooms).mockResolvedValue([]);
+        vi.mocked(api.listStudyPlans).mockResolvedValue([]);
         vi.mocked(api.listTeacherPointStudents).mockResolvedValue(page([]));
         vi.mocked(api.listTeacherStudentPointTransactions).mockResolvedValue(page([]));
     });
@@ -79,6 +83,126 @@ describe("PointsPage", () => {
         expect(screen.getByText("120")).toBeInTheDocument();
         expect(api.listAdminPointAccounts).toHaveBeenCalledWith({ page: 0, size: 20 });
         expect(api.listTeacherPointStudents).not.toHaveBeenCalled();
+    });
+
+    it("shows student usernames instead of numeric IDs in admin point tables", async () => {
+        vi.mocked(api.listAdminPointAccounts).mockResolvedValue(page([{
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            availablePoints: 120,
+            frozenPoints: 0,
+            lifetimeEarnedPoints: 180,
+            lifetimeSpentPoints: 60,
+            status: "ACTIVE",
+        }]));
+        vi.mocked(api.listAdminPointTransactions).mockResolvedValue(page([{
+            id: 91,
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            transactionType: "EARN",
+            amount: 5,
+            balanceBefore: 115,
+            balanceAfter: 120,
+            sourceType: "STUDY_RECORD",
+            sourceKey: "study:13",
+            ruleCode: "STUDY_RECORD_COMPLETE",
+        }]));
+        vi.mocked(api.listAdminPointEvents).mockResolvedValue(page([{
+            id: 7,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            sourceType: "STUDY_RECORD",
+            sourceId: 13,
+            sourceKey: "study:13",
+            ruleCode: "STUDY_RECORD_COMPLETE",
+            ruleName: "完成学习记录",
+            points: 5,
+            status: "FAILED",
+            autoAttemptCount: 3,
+        }]));
+
+        render(() => <PointsPage />);
+
+        expect(await screen.findByText("student42")).toBeInTheDocument();
+        await fireEvent.click(screen.getByRole("tab", { name: "流水" }));
+        expect(await screen.findByText("student42")).toBeInTheDocument();
+        await fireEvent.click(screen.getByRole("tab", { name: "事件" }));
+        expect(await screen.findByText("student42")).toBeInTheDocument();
+        expect(screen.queryByText("#42")).not.toBeInTheDocument();
+    });
+
+    it("shows transaction sources in Chinese in the source and reason column", async () => {
+        vi.mocked(api.listAdminPointTransactions).mockResolvedValue(page([{
+            id: 6,
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            transactionType: "EARN",
+            amount: 2,
+            balanceBefore: 14,
+            balanceAfter: 16,
+            sourceType: "VIDEO_WATCH",
+            sourceKey: "classroom-video:1:14:student:4:completed",
+            ruleCode: "VIDEO_WATCH",
+        }, {
+            id: 5,
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            transactionType: "EARN",
+            amount: 1,
+            balanceBefore: 13,
+            balanceAfter: 14,
+            sourceType: "MANUAL_ADJUSTMENT",
+            sourceKey: "manual:5",
+            ruleCode: "MANUAL_ADJUSTMENT",
+            reason: "管理员奖励1分首次完成者",
+        }, {
+            id: 3,
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            transactionType: "EARN",
+            amount: 10,
+            balanceBefore: 2,
+            balanceAfter: 12,
+            sourceType: "STUDY_TASK",
+            sourceKey: "study-day-task:1:completed",
+            ruleCode: "DAILY_TASK_COMPLETED",
+        }, {
+            id: 2,
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "小明",
+            transactionType: "EARN",
+            amount: 1,
+            balanceBefore: 1,
+            balanceAfter: 2,
+            sourceType: "STUDY_RECORD",
+            sourceKey: "study-record:3:correct",
+            ruleCode: "STUDY_RECORD_CORRECT",
+        }]));
+
+        render(() => <PointsPage />);
+        await fireEvent.click(screen.getByRole("tab", { name: "流水" }));
+
+        expect(await screen.findByText("视频观看")).toBeInTheDocument();
+        expect(screen.getByText("人工调整")).toBeInTheDocument();
+        expect(screen.getByText("完成每日任务")).toBeInTheDocument();
+        expect(screen.getByText("单词答对")).toBeInTheDocument();
+        expect(screen.queryByText("VIDEO_WATCH")).not.toBeInTheDocument();
+        expect(screen.queryByText("MANUAL_ADJUSTMENT")).not.toBeInTheDocument();
+        expect(screen.queryByText("DAILY_TASK_COMPLETED")).not.toBeInTheDocument();
+        expect(screen.queryByText("STUDY_RECORD_CORRECT")).not.toBeInTheDocument();
     });
 
     it("requires a reason before confirming a failed event retry", async () => {
@@ -144,11 +268,41 @@ describe("PointsPage", () => {
         expect(screen.queryByRole("button", { name: "手动重试" })).not.toBeInTheDocument();
     });
 
-    it("requires and submits an audit reason when creating a rule", async () => {
+    it("uses Chinese source and scope pickers and derives the hidden rule code from source type", async () => {
+        vi.mocked(api.listClassrooms).mockResolvedValue([{
+            id: 3,
+            name: "一班",
+            teacherId: 2,
+            teacherName: "王老师",
+            studentCount: 12,
+        }]);
+        vi.mocked(api.listStudyPlans).mockResolvedValue([{
+            id: 8,
+            name: "四级计划",
+            teacherId: 2,
+            dictionaryId: 5,
+            dictionaryName: "CET4",
+            classroomIds: [3],
+            startDate: "2026-07-23",
+            timezone: "Asia/Shanghai",
+            dailyNewCount: 10,
+            dailyReviewLimit: 20,
+            reviewMode: "FIXED_INTERVALS",
+            reviewIntervals: [0, 1],
+            completionThreshold: 80,
+            dailyDeadlineTime: "22:00",
+            attentionTrackingEnabled: false,
+            minFocusSecondsPerWord: 1,
+            maxFocusSecondsPerWord: 60,
+            longStayWarningSeconds: 20,
+            idleTimeoutSeconds: 60,
+            status: "PUBLISHED",
+            studentCount: 12,
+        }]);
         vi.mocked(api.createPointRule).mockResolvedValue({
             id: 11,
-            code: "CLASSROOM_HELP",
-            name: "课堂互助",
+            code: "STUDY_RECORD",
+            name: "答对单词",
             sourceType: "MANUAL_ADJUSTMENT",
             basePoints: 3,
             enabled: true,
@@ -157,20 +311,103 @@ describe("PointsPage", () => {
         render(() => <PointsPage />);
         await fireEvent.click(screen.getByRole("tab", { name: "规则" }));
         await fireEvent.click(await screen.findByRole("button", { name: "新增规则" }));
-        await fireEvent.input(screen.getByLabelText("规则编码"), { target: { value: "CLASSROOM_HELP" } });
-        await fireEvent.input(screen.getByLabelText("规则名称"), { target: { value: "课堂互助" } });
+        expect(screen.queryByLabelText("规则编码")).not.toBeInTheDocument();
+        expect(await screen.findByRole("option", { name: "学习记录" })).toBeInTheDocument();
+        await fireEvent.change(screen.getByLabelText("来源类型"), { target: { value: "STUDY_RECORD" } });
+        await fireEvent.input(screen.getByLabelText("规则名称"), { target: { value: "答对单词" } });
         await fireEvent.input(screen.getByLabelText("基础分值"), { target: { value: "3" } });
+        await fireEvent.change(screen.getByLabelText("范围类型"), { target: { value: "CLASSROOM" } });
+        await fireEvent.change(await screen.findByLabelText("范围ID"), { target: { value: "3" } });
 
         const save = screen.getByRole("button", { name: "保存规则" });
-        expect(save).toBeDisabled();
-        await fireEvent.input(screen.getByLabelText("变更原因"), { target: { value: "新增课堂激励规则" } });
         expect(save).not.toBeDisabled();
         await fireEvent.click(save);
 
         await waitFor(() => expect(api.createPointRule).toHaveBeenCalledWith(expect.objectContaining({
-            code: "CLASSROOM_HELP",
+            code: "STUDY_RECORD",
+            sourceType: "STUDY_RECORD",
             basePoints: 3,
-            reason: "新增课堂激励规则",
+            scopeType: "CLASSROOM",
+            scopeId: 3,
+            reason: "",
+        })));
+        expect(api.listClassrooms).toHaveBeenCalled();
+        expect(api.listStudyPlans).toHaveBeenCalled();
+    });
+
+    it("marks rule name and base points as required while keeping reason optional", async () => {
+        render(() => <PointsPage />);
+        await fireEvent.click(screen.getByRole("tab", { name: "规则" }));
+        await fireEvent.click(await screen.findByRole("button", { name: "新增规则" }));
+
+        expect(screen.getByLabelText("规则名称")).toBeRequired();
+        expect(screen.getByLabelText("基础分值")).toBeRequired();
+        expect(screen.getByLabelText("变更原因")).not.toBeRequired();
+    });
+
+    it("shows point rule source and scope labels in Chinese when editing", async () => {
+        vi.mocked(api.listPointRules).mockResolvedValue([{
+            id: 11,
+            code: "STUDY_PLAN",
+            name: "计划奖励",
+            sourceType: "STUDY_TASK",
+            basePoints: 10,
+            scopeType: "STUDY_PLAN",
+            scopeId: 8,
+            enabled: true,
+        }]);
+        vi.mocked(api.listClassrooms).mockResolvedValue([]);
+        vi.mocked(api.listStudyPlans).mockResolvedValue([{
+            id: 8,
+            name: "四级计划",
+            teacherId: 2,
+            dictionaryId: 5,
+            dictionaryName: "CET4",
+            classroomIds: [],
+            startDate: "2026-07-23",
+            timezone: "Asia/Shanghai",
+            dailyNewCount: 10,
+            dailyReviewLimit: 20,
+            reviewMode: "FIXED_INTERVALS",
+            reviewIntervals: [0],
+            completionThreshold: 80,
+            dailyDeadlineTime: "22:00",
+            attentionTrackingEnabled: false,
+            minFocusSecondsPerWord: 1,
+            maxFocusSecondsPerWord: 60,
+            longStayWarningSeconds: 20,
+            idleTimeoutSeconds: 60,
+            status: "PUBLISHED",
+            studentCount: 12,
+        }]);
+        vi.mocked(api.updatePointRule).mockResolvedValue({
+            id: 11,
+            code: "STUDY_PLAN",
+            name: "计划奖励",
+            sourceType: "STUDY_TASK",
+            basePoints: 10,
+            scopeType: "STUDY_PLAN",
+            scopeId: 8,
+            enabled: true,
+        });
+
+        render(() => <PointsPage />);
+        await fireEvent.click(screen.getByRole("tab", { name: "规则" }));
+
+        expect(await screen.findByText("学习任务")).toBeInTheDocument();
+        expect(screen.getByText("学习计划 · 四级计划")).toBeInTheDocument();
+        await fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+
+        expect(screen.queryByLabelText("规则编码")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("来源类型")).toHaveValue("STUDY_TASK");
+        expect(screen.getByLabelText("范围类型")).toHaveValue("STUDY_PLAN");
+        expect(screen.getByLabelText("范围ID")).toHaveValue("8");
+        await fireEvent.click(screen.getByRole("button", { name: "保存规则" }));
+
+        await waitFor(() => expect(api.updatePointRule).toHaveBeenCalledWith(11, expect.objectContaining({
+            name: "计划奖励",
+            basePoints: 10,
+            reason: "",
         })));
     });
 

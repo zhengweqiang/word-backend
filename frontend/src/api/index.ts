@@ -505,6 +505,10 @@ export const studentWordMemoryApi = {
 export const studentVideoApi = {
   playFromClassroomFeed: (classroomId: number, videoId: number) =>
     fetchJson<VideoAccessResponse>(`${API_BASE}/classrooms/${classroomId}/group-feed/videos/${videoId}/play`),
+  completeFromClassroomFeed: (classroomId: number, videoId: number) =>
+    fetchJson<void>(`${API_BASE}/classrooms/${classroomId}/group-feed/videos/${videoId}/complete`, {
+      method: 'POST',
+    }),
 };
 
 export const studyPlanApi = {

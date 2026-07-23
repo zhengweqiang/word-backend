@@ -13,6 +13,6 @@ public record StudentPointRuleUpdateRequest(
         String scopeType,
         Long scopeId,
         @NotNull Boolean enabled,
-        @NotBlank @Size(max = 500) String reason
+        @Size(max = 500) String reason
 ) {
 }

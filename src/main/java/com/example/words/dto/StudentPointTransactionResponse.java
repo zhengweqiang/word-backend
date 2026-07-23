@@ -9,6 +9,8 @@ public record StudentPointTransactionResponse(
         Long id,
         Long accountId,
         Long studentId,
+        String studentUsername,
+        String studentName,
         PointTransactionType transactionType,
         Integer amount,
         Integer balanceBefore,
@@ -24,10 +26,20 @@ public record StudentPointTransactionResponse(
         LocalDateTime createdAt
 ) {
     public static StudentPointTransactionResponse from(StudentPointTransaction transaction) {
+        return from(transaction, null, null);
+    }
+
+    public static StudentPointTransactionResponse from(
+            StudentPointTransaction transaction,
+            String studentName,
+            String studentUsername
+    ) {
         return new StudentPointTransactionResponse(
                 transaction.getId(),
                 transaction.getAccountId(),
                 transaction.getStudentId(),
+                studentUsername,
+                studentName,
                 transaction.getTransactionType(),
                 transaction.getAmount(),
                 transaction.getBalanceBefore(),

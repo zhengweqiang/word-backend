@@ -75,6 +75,7 @@ export function StudentClassrooms({ onOpenDictionary, onOpenStudyPlan }: Student
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isVideoLandscape, setIsVideoLandscape] = useState(false);
   const composerTextAreaRef = useRef<HTMLTextAreaElement>(null);
+  const completedVideoKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -222,6 +223,18 @@ export function StudentClassrooms({ onOpenDictionary, onOpenStudyPlan }: Student
     setVideoAccess(null);
     setVideoError(null);
     setIsVideoLandscape(false);
+  };
+
+  const completeVideoPlayback = async () => {
+    if (!selectedClassroomId || !playingMessage?.resourceId) return;
+    const videoKey = `${selectedClassroomId}:${playingMessage.resourceId}`;
+    if (completedVideoKeysRef.current.has(videoKey)) return;
+    completedVideoKeysRef.current.add(videoKey);
+    try {
+      await studentVideoApi.completeFromClassroomFeed(selectedClassroomId, playingMessage.resourceId);
+    } catch {
+      completedVideoKeysRef.current.delete(videoKey);
+    }
   };
 
   const openResource = (message: ClassroomGroupFeedMessage) => {
@@ -388,7 +401,14 @@ export function StudentClassrooms({ onOpenDictionary, onOpenStudyPlan }: Student
               {videoLoading ? (
                 <div className="student-player__loading"><SpinnerGap size={34} />正在获取播放地址</div>
               ) : videoAccess ? (
-                <video controls autoPlay playsInline poster={videoAccess.coverUrl ?? undefined} src={videoAccess.url} />
+                <video
+                  controls
+                  autoPlay
+                  playsInline
+                  poster={videoAccess.coverUrl ?? undefined}
+                  src={videoAccess.url}
+                  onEnded={() => void completeVideoPlayback()}
+                />
               ) : (
                 <div className="student-player__loading"><VideoCamera size={34} />{videoError || '无法播放这个视频'}</div>
               )}

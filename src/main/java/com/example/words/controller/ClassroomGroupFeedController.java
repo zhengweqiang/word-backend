@@ -99,6 +99,19 @@ public class ClassroomGroupFeedController {
         ));
     }
 
+    @PostMapping("/videos/{videoId}/complete")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<Void> completeVideo(
+            @PathVariable Long classroomId,
+            @PathVariable Long videoId) {
+        classroomGroupFeedService.completeVideoPlayback(
+                classroomId,
+                videoId,
+                currentUserService.getCurrentUser()
+        );
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/study-plans")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public ResponseEntity<ClassroomGroupFeedMessageResponse> shareStudyPlan(

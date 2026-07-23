@@ -73,7 +73,7 @@ describe("student points API", () => {
         );
     });
 
-    it("sends the required audit reason when creating and updating rules", async () => {
+    it("sends audit reasons when creating and updating rules", async () => {
         const createPayload = {
             code: "CLASSROOM_HELP",
             name: "课堂互助",

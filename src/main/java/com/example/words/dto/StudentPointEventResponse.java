@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 public record StudentPointEventResponse(
         Long id,
         Long studentId,
+        String studentUsername,
+        String studentName,
         PointSourceType sourceType,
         Long sourceId,
         String sourceKey,
@@ -27,8 +29,16 @@ public record StudentPointEventResponse(
         LocalDateTime processedAt
 ) {
     public static StudentPointEventResponse from(StudentPointEvent event) {
+        return from(event, null, null);
+    }
+
+    public static StudentPointEventResponse from(
+            StudentPointEvent event,
+            String studentName,
+            String studentUsername
+    ) {
         return new StudentPointEventResponse(
-                event.getId(), event.getStudentId(), event.getSourceType(), event.getSourceId(),
+                event.getId(), event.getStudentId(), studentUsername, studentName, event.getSourceType(), event.getSourceId(),
                 event.getSourceKey(), event.getRuleCode(), event.getRuleName(), event.getPoints(),
                 event.getStatus(), event.getAutoAttemptCount(), event.getNextRetryAt(), event.getLastError(),
                 event.getOperatorId(), event.getOperatorRole(), event.getReason(), event.getTransactionId(),

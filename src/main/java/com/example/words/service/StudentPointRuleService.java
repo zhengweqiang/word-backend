@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class StudentPointRuleService {
 
     private static final String RULE_CODE_CONSTRAINT = "uk_student_point_rules_code";
+    private static final String DEFAULT_AUDIT_REASON = "未填写变更原因";
     private static final EnumSet<PointEventStatus> UNFINISHED_STATUSES = EnumSet.of(
             PointEventStatus.PENDING,
             PointEventStatus.PROCESSING,
@@ -153,7 +154,7 @@ public class StudentPointRuleService {
 
     private String normalizeReason(String value) {
         if (value == null || value.trim().isEmpty()) {
-            throw error("POINT_RULE_REASON_REQUIRED", HttpStatus.BAD_REQUEST, "Rule change reason is required");
+            return DEFAULT_AUDIT_REASON;
         }
         String normalized = value.trim();
         if (normalized.length() > 500) {

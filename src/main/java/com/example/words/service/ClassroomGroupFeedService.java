@@ -50,6 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ClassroomGroupFeedService {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final String VIDEO_WATCH_RULE_CODE = "VIDEO_WATCH";
 
     private final ClassroomGroupFeedMessageRepository classroomGroupFeedMessageRepository;
     private final ClassroomRepository classroomRepository;
@@ -62,6 +63,7 @@ public class ClassroomGroupFeedService {
     private final AccessControlService accessControlService;
     private final AppUserRepository appUserRepository;
     private final VideoAssetService videoAssetService;
+    private final StudentPointEventPublisher studentPointEventPublisher;
 
     public ClassroomGroupFeedService(
             ClassroomGroupFeedMessageRepository classroomGroupFeedMessageRepository,
@@ -74,7 +76,8 @@ public class ClassroomGroupFeedService {
             StudyPlanClassroomRepository studyPlanClassroomRepository,
             AccessControlService accessControlService,
             AppUserRepository appUserRepository,
-            VideoAssetService videoAssetService) {
+            VideoAssetService videoAssetService,
+            StudentPointEventPublisher studentPointEventPublisher) {
         this.classroomGroupFeedMessageRepository = classroomGroupFeedMessageRepository;
         this.classroomRepository = classroomRepository;
         this.classroomMemberRepository = classroomMemberRepository;
@@ -86,6 +89,7 @@ public class ClassroomGroupFeedService {
         this.accessControlService = accessControlService;
         this.appUserRepository = appUserRepository;
         this.videoAssetService = videoAssetService;
+        this.studentPointEventPublisher = studentPointEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -228,6 +232,34 @@ public class ClassroomGroupFeedService {
             throw new BadRequestException("Video is not ready for classroom playback");
         }
         return videoAssetService.buildAccessResponse(video, VideoAccessMode.PLAY);
+    }
+
+    @Transactional
+    public void completeVideoPlayback(Long classroomId, Long videoId, AppUser actor) {
+        if (actor.getRole() != UserRole.STUDENT) {
+            throw new AccessDeniedException("Only students can complete classroom video playback");
+        }
+        Classroom classroom = getClassroomOrThrow(classroomId);
+        ensureCanAccessFeed(classroom, actor);
+        if (!classroomGroupFeedMessageRepository.existsByClassroomIdAndMessageTypeAndResourceId(
+                classroomId,
+                ClassroomGroupFeedMessageType.VIDEO,
+                videoId)) {
+            throw new BadRequestException("Video is not shared to this classroom");
+        }
+
+        VideoAsset video = videoAssetRepository.findById(videoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Video not found: " + videoId));
+        if (!isPlayable(video)) {
+            throw new BadRequestException("Video is not ready for classroom playback");
+        }
+
+        studentPointEventPublisher.publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                actor.getId(),
+                video.getId(),
+                videoWatchSourceKey(classroomId, videoId, actor.getId()),
+                VIDEO_WATCH_RULE_CODE
+        ));
     }
 
     @Transactional
@@ -387,6 +419,10 @@ public class ClassroomGroupFeedService {
 
     private String nullToUntitled(String value) {
         return value == null || value.isBlank() ? "未命名" : value;
+    }
+
+    private String videoWatchSourceKey(Long classroomId, Long videoId, Long studentId) {
+        return "classroom-video:" + classroomId + ":" + videoId + ":student:" + studentId + ":completed";
     }
 
     private Map<Long, String> authorNames(List<ClassroomGroupFeedMessage> messages) {

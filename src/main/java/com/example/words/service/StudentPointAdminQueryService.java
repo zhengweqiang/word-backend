@@ -9,6 +9,8 @@ import com.example.words.dto.StudentPointTransactionResponse;
 import com.example.words.model.AppUser;
 import com.example.words.model.PointEventStatus;
 import com.example.words.model.StudentPointAccount;
+import com.example.words.model.StudentPointEvent;
+import com.example.words.model.StudentPointTransaction;
 import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.StudentPointAccountRepository;
 import com.example.words.repository.StudentPointEventAttemptRepository;
@@ -45,26 +47,42 @@ public class StudentPointAdminQueryService {
     @Transactional(readOnly = true)
     public Page<AdminStudentPointAccountResponse> getAccounts(int page, int size) {
         Page<StudentPointAccount> accounts = accountRepository.findAll(page(page, size));
-        Map<Long, AppUser> users = userRepository.findAllById(
-                        accounts.stream().map(StudentPointAccount::getStudentId).toList()
-                ).stream()
-                .collect(Collectors.toMap(AppUser::getId, Function.identity()));
+        Map<Long, AppUser> users = findUsersByStudentIds(
+                accounts.stream().map(StudentPointAccount::getStudentId).toList()
+        );
         return accounts.map(account -> AdminStudentPointAccountResponse.from(
                 account,
-                users.containsKey(account.getStudentId()) ? users.get(account.getStudentId()).getDisplayName() : null
+                studentName(users, account.getStudentId()),
+                studentUsername(users, account.getStudentId())
         ));
     }
 
     @Transactional(readOnly = true)
     public Page<StudentPointTransactionResponse> getTransactions(int page, int size) {
-        return transactionRepository.findAll(page(page, size)).map(StudentPointTransactionResponse::from);
+        Page<StudentPointTransaction> transactions = transactionRepository.findAll(page(page, size));
+        Map<Long, AppUser> users = findUsersByStudentIds(
+                transactions.stream().map(StudentPointTransaction::getStudentId).toList()
+        );
+        return transactions.map(transaction -> StudentPointTransactionResponse.from(
+                transaction,
+                studentName(users, transaction.getStudentId()),
+                studentUsername(users, transaction.getStudentId())
+        ));
     }
 
     @Transactional(readOnly = true)
     public Page<StudentPointEventResponse> getEvents(PointEventStatus status, int page, int size) {
         Pageable pageable = page(page, size);
-        return (status == null ? eventRepository.findAll(pageable) : eventRepository.findByStatus(status, pageable))
-                .map(StudentPointEventResponse::from);
+        Page<StudentPointEvent> events =
+                status == null ? eventRepository.findAll(pageable) : eventRepository.findByStatus(status, pageable);
+        Map<Long, AppUser> users = findUsersByStudentIds(
+                events.stream().map(StudentPointEvent::getStudentId).toList()
+        );
+        return events.map(event -> StudentPointEventResponse.from(
+                event,
+                studentName(users, event.getStudentId()),
+                studentUsername(users, event.getStudentId())
+        ));
     }
 
     @Transactional(readOnly = true)
@@ -94,5 +112,24 @@ public class StudentPointAdminQueryService {
                 Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
         );
+    }
+
+    private Map<Long, AppUser> findUsersByStudentIds(List<Long> studentIds) {
+        List<Long> ids = studentIds.stream().distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(AppUser::getId, Function.identity()));
+    }
+
+    private String studentName(Map<Long, AppUser> users, Long studentId) {
+        AppUser user = users.get(studentId);
+        return user == null ? null : user.getDisplayName();
+    }
+
+    private String studentUsername(Map<Long, AppUser> users, Long studentId) {
+        AppUser user = users.get(studentId);
+        return user == null ? null : user.getUsername();
     }
 }

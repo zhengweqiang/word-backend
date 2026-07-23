@@ -122,6 +122,25 @@ class StudentPointRuleServiceTest {
     }
 
     @Test
+    void createAllowsBlankReasonAndWritesDefaultAuditReason() {
+        when(ruleRepository.findByCode("OPTIONAL_REASON")).thenReturn(Optional.empty());
+        when(ruleRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            StudentPointRule rule = invocation.getArgument(0);
+            rule.setId(6L);
+            return rule;
+        });
+
+        service.create(admin(), new StudentPointRuleCreateRequest(
+                "OPTIONAL_REASON", "可选原因", null, PointSourceType.STUDY_TASK, 5,
+                null, null, true, ""
+        ));
+
+        ArgumentCaptor<StudentPointRuleAudit> audit = ArgumentCaptor.forClass(StudentPointRuleAudit.class);
+        verify(auditRepository).save(audit.capture());
+        assertEquals("未填写变更原因", audit.getValue().getReason());
+    }
+
+    @Test
     void unrelatedDatabaseConstraintIsNotMisreportedAsDuplicateCode() {
         when(ruleRepository.findByCode("RULE")).thenReturn(Optional.empty());
         DataIntegrityViolationException databaseFailure = new DataIntegrityViolationException("different constraint");
