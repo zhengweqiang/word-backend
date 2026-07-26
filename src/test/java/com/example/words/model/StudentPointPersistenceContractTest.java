@@ -26,6 +26,10 @@ class StudentPointPersistenceContractTest {
             "db/migration/V34__add_study_points_eligibility.sql";
     private static final String RULE_AUDIT_MIGRATION_PATH =
             "db/migration/V35__add_student_point_rule_audits.sql";
+    private static final String DEFAULT_RULES_MIGRATION_PATH =
+            "db/migration/V36__seed_student_point_default_rules.sql";
+    private static final String DISABLE_OPERATIONAL_RULES_MIGRATION_PATH =
+            "db/migration/V37__disable_operational_student_point_rules.sql";
 
     @Test
     void mapsAllMigrationRequiredTimestampsAsNonNullable() throws NoSuchFieldException {
@@ -183,6 +187,44 @@ class StudentPointPersistenceContractTest {
         assertNotNull(createdAt);
         assertFalse(createdAt.nullable());
         assertFalse(createdAt.updatable());
+    }
+
+    @Test
+    void v36SeedsAllFactoryDefaultPointRulesWithoutDeletingHistory() throws Exception {
+        String migration = readMigration(DEFAULT_RULES_MIGRATION_PATH);
+        String normalized = migration.replaceAll("\\s+", " ").toUpperCase();
+        List<String> defaultRuleCodes = List.of(
+                "STUDY_RECORD_CORRECT",
+                "DAILY_TASK_COMPLETED",
+                "VIDEO_WATCH",
+                "EXAM",
+                "ADMIN_CORRECTION",
+                "MANUAL_ADJUSTMENT",
+                "REDEMPTION"
+        );
+
+        assertTrue(normalized.contains("INSERT INTO STUDENT_POINT_RULES"));
+        assertTrue(normalized.contains("ON CONFLICT (CODE) DO UPDATE"));
+        for (String defaultRuleCode : defaultRuleCodes) {
+            assertTrue(migration.contains("'" + defaultRuleCode + "'"), "missing default rule " + defaultRuleCode);
+        }
+        assertFalse(normalized.contains("DELETE"));
+        assertFalse(normalized.contains("TRUNCATE"));
+        assertFalse(normalized.contains("ON DELETE"));
+    }
+
+    @Test
+    void v37DisablesOperationalPointRulesWithoutDeletingHistory() throws Exception {
+        String migration = readMigration(DISABLE_OPERATIONAL_RULES_MIGRATION_PATH);
+        String normalized = migration.replaceAll("\\s+", " ").toUpperCase();
+
+        assertTrue(normalized.contains("UPDATE STUDENT_POINT_RULES"));
+        assertTrue(normalized.contains("ENABLED = FALSE"));
+        assertTrue(normalized.contains("'MANUAL_ADJUSTMENT'"));
+        assertTrue(normalized.contains("'ADMIN_CORRECTION'"));
+        assertFalse(normalized.contains("DELETE"));
+        assertFalse(normalized.contains("TRUNCATE"));
+        assertFalse(normalized.contains("ON DELETE"));
     }
 
     private String readMigration() throws IOException {

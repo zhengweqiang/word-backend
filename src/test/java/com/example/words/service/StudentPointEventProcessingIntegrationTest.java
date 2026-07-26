@@ -22,6 +22,7 @@ import com.example.words.repository.StudentPointAdjustmentRequestRepository;
 import com.example.words.repository.StudentPointEventAttemptRepository;
 import com.example.words.repository.StudentPointEventRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -409,6 +410,10 @@ class StudentPointEventProcessingIntegrationTest {
     }
 
     private StudentPointEvent event(Long studentId, PointSourceType sourceType, int points) {
+        return event(studentId, sourceType, BigDecimal.valueOf(points));
+    }
+
+    private StudentPointEvent event(Long studentId, PointSourceType sourceType, BigDecimal points) {
         StudentPointEvent event = new StudentPointEvent();
         event.setStudentId(studentId);
         event.setSourceType(sourceType);

@@ -5,6 +5,7 @@ import com.example.words.dto.StudentPointAdjustmentRequestDto;
 import com.example.words.dto.StudentPointAdminReasonRequest;
 import com.example.words.dto.StudentPointEventAttemptResponse;
 import com.example.words.dto.StudentPointEventResponse;
+import com.example.words.dto.StudentPointRedemptionRequestDto;
 import com.example.words.dto.StudentPointRuleCreateRequest;
 import com.example.words.dto.StudentPointRuleAuditResponse;
 import com.example.words.dto.StudentPointRuleResponse;
@@ -113,6 +114,20 @@ public class AdminStudentPointController {
                         request.replacesAdjustmentRequestId()
                 )
         ));
+    }
+
+    @PostMapping("/students/{studentId}/redemptions")
+    public ResponseEntity<StudentPointTransactionResponse> redeem(
+            @PathVariable Long studentId,
+            @Valid @RequestBody StudentPointRedemptionRequestDto request
+    ) {
+        return ResponseEntity.ok(StudentPointTransactionResponse.from(adminService.redeemPoints(
+                currentUserService.getCurrentUser(),
+                studentId,
+                request.requestKey(),
+                request.points(),
+                request.reason()
+        )));
     }
 
     @GetMapping("/rules")

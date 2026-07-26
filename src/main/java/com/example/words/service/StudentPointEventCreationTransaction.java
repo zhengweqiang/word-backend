@@ -7,6 +7,8 @@ import com.example.words.model.StudentPointEvent;
 import com.example.words.model.StudentPointRule;
 import com.example.words.repository.StudentPointEventRepository;
 import com.example.words.repository.StudentPointRuleRepository;
+import java.math.BigDecimal;
+import java.util.EnumSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class StudentPointEventCreationTransaction {
+
+    private static final EnumSet<PointSourceType> OPERATIONAL_RULE_SOURCES = EnumSet.of(
+            PointSourceType.MANUAL_ADJUSTMENT,
+            PointSourceType.ADMIN_CORRECTION
+    );
 
     private final StudentPointRuleRepository ruleRepository;
     private final StudentPointEventRepository eventRepository;
@@ -68,7 +75,14 @@ public class StudentPointEventCreationTransaction {
                     "Point rule is disabled: " + requestedRuleCode
             );
         }
-        if (rule.getBasePoints() == null || rule.getBasePoints() == 0
+        if (OPERATIONAL_RULE_SOURCES.contains(rule.getSourceType())) {
+            throw new StudentPointOperationException(
+                    "POINT_RULE_SOURCE_NOT_CONFIGURABLE",
+                    HttpStatus.CONFLICT,
+                    "Manual adjustment and admin correction are operational point sources"
+            );
+        }
+        if (rule.getBasePoints() == null || rule.getBasePoints().compareTo(BigDecimal.ZERO) == 0
                 || rule.getSourceType() == null || isBlank(rule.getCode()) || isBlank(rule.getName())) {
             throw new StudentPointOperationException(
                     "POINT_RULE_CONFIGURATION_INVALID",
@@ -85,7 +99,7 @@ public class StudentPointEventCreationTransaction {
             String sourceKey,
             String ruleCode,
             String ruleName,
-            Integer points,
+            BigDecimal points,
             String idempotencyKey,
             Long operatorId,
             String operatorRole,
@@ -127,12 +141,25 @@ public class StudentPointEventCreationTransaction {
     public record ManualEventRequest(
             Long studentId,
             Long adjustmentRequestId,
-            Integer amount,
+            BigDecimal amount,
             String sourceKey,
             String idempotencyKey,
             Long operatorId,
             String operatorRole,
             String reason
     ) {
+        public ManualEventRequest(
+                Long studentId,
+                Long adjustmentRequestId,
+                int amount,
+                String sourceKey,
+                String idempotencyKey,
+                Long operatorId,
+                String operatorRole,
+                String reason
+        ) {
+            this(studentId, adjustmentRequestId, BigDecimal.valueOf(amount), sourceKey, idempotencyKey,
+                    operatorId, operatorRole, reason);
+        }
     }
 }

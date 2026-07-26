@@ -108,6 +108,16 @@ class StudentPointEventCreationTransactionTest {
     }
 
     @Test
+    void createRuleEventShouldRejectOperationalSourceRules() {
+        StudentPointRule manual = StudentPointRule.create(
+                "MANUAL_ADJUSTMENT", "manual", PointSourceType.MANUAL_ADJUSTMENT, 1);
+        when(ruleRepository.findByCodeForUpdate("MANUAL_ADJUSTMENT")).thenReturn(Optional.of(manual));
+
+        assertFailure("POINT_RULE_SOURCE_NOT_CONFIGURABLE", HttpStatus.CONFLICT,
+                () -> creationTransaction.createRuleEvent(ruleRequest("MANUAL_ADJUSTMENT")));
+    }
+
+    @Test
     void createManualEventShouldPersistFixedManualSnapshot() {
         stubEventSave();
         StudentPointEventCreationTransaction.ManualEventRequest request =

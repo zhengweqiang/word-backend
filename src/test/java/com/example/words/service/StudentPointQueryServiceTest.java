@@ -9,6 +9,7 @@ import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.StudentPointAccount;
 import com.example.words.repository.StudentPointAccountRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,12 +44,12 @@ class StudentPointQueryServiceTest {
         account.setLifetimeEarnedPoints(50);
         when(accountRepository.findByStudentId(8L)).thenReturn(Optional.of(account));
         when(transactionRepository.sumEarnedByStudentIdBetween(
-                org.mockito.ArgumentMatchers.eq(8L), any(), any())).thenReturn(12L);
+                org.mockito.ArgumentMatchers.eq(8L), any(), any())).thenReturn(BigDecimal.valueOf(12));
 
         var response = service.getSummary(8L);
 
         assertEquals(35, response.availablePoints());
-        assertEquals(12L, response.todayEarnedPoints());
+        assertEquals(BigDecimal.valueOf(12), response.todayEarnedPoints());
     }
 
     @Test

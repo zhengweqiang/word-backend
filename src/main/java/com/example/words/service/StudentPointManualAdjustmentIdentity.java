@@ -3,6 +3,7 @@ package com.example.words.service;
 import com.example.words.model.PointAdjustmentStatus;
 import com.example.words.model.StudentPointAdjustmentRequest;
 import com.example.words.model.StudentPointEvent;
+import java.math.BigDecimal;
 import java.util.Objects;
 
 final class StudentPointManualAdjustmentIdentity {
@@ -37,8 +38,12 @@ final class StudentPointManualAdjustmentIdentity {
 
     static boolean matchesWorkflow(StudentPointEvent event, StudentPointAdjustmentRequest request) {
         return Objects.equals(request.getStudentId(), event.getStudentId())
-                && Objects.equals(request.getAmount(), event.getPoints())
+                && sameAmount(request.getAmount(), event.getPoints())
                 && Objects.equals(request.getRequestedBy(), event.getOperatorId())
                 && Objects.equals(request.getRequestedRole(), event.getOperatorRole());
+    }
+
+    private static boolean sameAmount(BigDecimal left, BigDecimal right) {
+        return left == null ? right == null : right != null && left.compareTo(right) == 0;
     }
 }

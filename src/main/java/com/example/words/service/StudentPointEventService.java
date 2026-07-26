@@ -3,9 +3,9 @@ package com.example.words.service;
 import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.PointAttemptTriggerType;
 import com.example.words.model.PointEventStatus;
-import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointEvent;
 import com.example.words.repository.StudentPointEventRepository;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -64,7 +64,7 @@ public class StudentPointEventService {
     public StudentPointEvent createManualAdjustment(
             Long studentId,
             Long adjustmentRequestId,
-            Integer amount,
+            BigDecimal amount,
             Actor actor,
             String reason
     ) {
@@ -98,6 +98,16 @@ public class StudentPointEventService {
         } catch (DataIntegrityViolationException exception) {
             return recoverManualUniqueRace(exception, expected);
         }
+    }
+
+    public StudentPointEvent createManualAdjustment(
+            Long studentId,
+            Long adjustmentRequestId,
+            int amount,
+            Actor actor,
+            String reason
+    ) {
+        return createManualAdjustment(studentId, adjustmentRequestId, BigDecimal.valueOf(amount), actor, reason);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -134,16 +144,16 @@ public class StudentPointEventService {
             return event;
         }
         if (event.getStatus() == PointEventStatus.PROCESSING) {
-            throw stateConflict("POINT_EVENT_PROCESSING", "积分事件正在处理");
+            throw stateConflict("POINT_EVENT_PROCESSING", "Point event is being processed");
         }
         if (event.getStatus() == PointEventStatus.CANCELLED) {
-            throw stateConflict("POINT_EVENT_CANCELLED", "积分事件已取消");
+            throw stateConflict("POINT_EVENT_CANCELLED", "Point event has been cancelled");
         }
         if (triggerType == PointAttemptTriggerType.AUTO
                 && event.getAutoAttemptCount() >= StudentPointProcessingPolicy.MAX_AUTO_ATTEMPTS) {
-            throw stateConflict("POINT_EVENT_AUTO_RETRY_EXHAUSTED", "积分事件自动重试次数已用完");
+            throw stateConflict("POINT_EVENT_AUTO_RETRY_EXHAUSTED", "Point event automatic retries are exhausted");
         }
-        throw stateConflict("POINT_EVENT_STATE_CONFLICT", "积分事件当前状态不允许处理");
+        throw stateConflict("POINT_EVENT_STATE_CONFLICT", "Point event state does not allow processing");
     }
 
     private AttemptContext normalizeAttemptContext(AttemptContext context) {
@@ -165,7 +175,7 @@ public class StudentPointEventService {
         return new StudentPointOperationException(
                 "POINT_EVENT_NOT_FOUND",
                 HttpStatus.NOT_FOUND,
-                "积分事件不存在: " + eventId
+                "Point event does not exist: " + eventId
         );
     }
 

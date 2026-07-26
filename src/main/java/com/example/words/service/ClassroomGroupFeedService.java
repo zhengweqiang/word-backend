@@ -51,6 +51,7 @@ public class ClassroomGroupFeedService {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final String VIDEO_WATCH_RULE_CODE = "VIDEO_WATCH";
+    private static final String CLASSROOM_CHAT_RULE_CODE = "CLASSROOM_CHAT_CONTRIBUTION";
 
     private final ClassroomGroupFeedMessageRepository classroomGroupFeedMessageRepository;
     private final ClassroomRepository classroomRepository;
@@ -157,6 +158,14 @@ public class ClassroomGroupFeedService {
         message.setContent(trimToNull(request.getContent()));
 
         ClassroomGroupFeedMessage saved = classroomGroupFeedMessageRepository.save(message);
+        if (actor.getRole() == UserRole.STUDENT) {
+            studentPointEventPublisher.publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                    actor.getId(),
+                    saved.getId(),
+                    classroomChatSourceKey(classroomId, saved.getId(), actor.getId()),
+                    CLASSROOM_CHAT_RULE_CODE
+            ));
+        }
         return toResponse(saved, authorNames(List.of(saved)));
     }
 
@@ -423,6 +432,10 @@ public class ClassroomGroupFeedService {
 
     private String videoWatchSourceKey(Long classroomId, Long videoId, Long studentId) {
         return "classroom-video:" + classroomId + ":" + videoId + ":student:" + studentId + ":completed";
+    }
+
+    private String classroomChatSourceKey(Long classroomId, Long messageId, Long studentId) {
+        return "classroom-chat:" + classroomId + ":message:" + messageId + ":student:" + studentId;
     }
 
     private Map<Long, String> authorNames(List<ClassroomGroupFeedMessage> messages) {

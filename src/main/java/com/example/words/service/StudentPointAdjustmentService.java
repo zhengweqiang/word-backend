@@ -13,6 +13,7 @@ import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.StudentPointAccountRepository;
 import com.example.words.repository.StudentPointAdjustmentRequestRepository;
 import com.example.words.repository.StudentPointEventRepository;
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +75,7 @@ public class StudentPointAdjustmentService {
             AppUser actor
     ) {
         if (!Objects.equals(request.getStudentId(), command.studentId())
-                || !Objects.equals(request.getAmount(), command.amount())
+                || !sameAmount(request.getAmount(), command.amount())
                 || !Objects.equals(request.getReason(), command.reason())
                 || !Objects.equals(request.getRequestedBy(), actor.getId())
                 || !Objects.equals(request.getRequestedRole(), actor.getRole().name())
@@ -149,7 +150,7 @@ public class StudentPointAdjustmentService {
             case FAILED -> PointAdjustmentStatus.FAILED;
             default -> request.getStatus();
         };
-        Integer availableBalance = null;
+        BigDecimal availableBalance = null;
         if (event.getStatus() == PointEventStatus.SUCCEEDED) {
             StudentPointAccount account = accountRepository.findByStudentId(request.getStudentId())
                     .orElseThrow(() -> error(
@@ -184,7 +185,7 @@ public class StudentPointAdjustmentService {
         if (command.studentId() == null || command.studentId() <= 0) {
             throw error("INVALID_STUDENT_ID", HttpStatus.BAD_REQUEST, "Student ID is invalid");
         }
-        if (command.amount() == null || command.amount() == 0) {
+        if (command.amount() == null || command.amount().compareTo(BigDecimal.ZERO) == 0) {
             throw error("INVALID_POINT_AMOUNT", HttpStatus.BAD_REQUEST, "Point amount must not be zero");
         }
         String reason = normalizeReason(command.reason());
@@ -263,6 +264,10 @@ public class StudentPointAdjustmentService {
                 || "POINT_EVENT_CANCELLED".equals(failure.getCode());
     }
 
+    private boolean sameAmount(BigDecimal left, BigDecimal right) {
+        return left == null ? right == null : right != null && left.compareTo(right) == 0;
+    }
+
     private StudentPointOperationException error(String code, HttpStatus status, String message) {
         return new StudentPointOperationException(code, status, message);
     }
@@ -270,10 +275,19 @@ public class StudentPointAdjustmentService {
     public record AdjustmentCommand(
             String requestKey,
             Long studentId,
-            Integer amount,
+            BigDecimal amount,
             String reason,
             Long replacesAdjustmentRequestId
     ) {
+        public AdjustmentCommand(
+                String requestKey,
+                Long studentId,
+                int amount,
+                String reason,
+                Long replacesAdjustmentRequestId
+        ) {
+            this(requestKey, studentId, BigDecimal.valueOf(amount), reason, replacesAdjustmentRequestId);
+        }
     }
 
     public record AdjustmentOutcome(
@@ -281,14 +295,14 @@ public class StudentPointAdjustmentService {
             Long eventId,
             PointAdjustmentStatus status,
             Long transactionId,
-            Integer availableBalance
+            BigDecimal availableBalance
     ) {
     }
 
     private record NormalizedCommand(
             String requestKey,
             Long studentId,
-            Integer amount,
+            BigDecimal amount,
             String reason,
             Long replacesAdjustmentRequestId
     ) {

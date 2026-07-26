@@ -1,11 +1,13 @@
 package com.example.words.dto;
 
+import java.math.BigDecimal;
+
 public record TeacherStudentPointResponse(
         Long studentId,
         String studentName,
-        Integer availablePoints,
-        Integer lifetimeEarnedPoints,
-        Integer lifetimeSpentPoints,
-        Long todayEarnedPoints
+        BigDecimal availablePoints,
+        BigDecimal lifetimeEarnedPoints,
+        BigDecimal lifetimeSpentPoints,
+        BigDecimal todayEarnedPoints
 ) {
 }

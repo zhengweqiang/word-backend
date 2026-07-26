@@ -11,6 +11,7 @@ import com.example.words.model.StudentPointTransaction;
 import com.example.words.repository.StudentPointAccountRepository;
 import com.example.words.repository.StudentPointAdjustmentRequestRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Objects;
@@ -49,20 +50,20 @@ public class StudentPointLedgerService {
             return validateIdempotentPost(existing.get(), request);
         }
 
-        int balanceBefore = account.getAvailablePoints();
-        int balanceAfter = addExact(balanceBefore, request.amount());
-        if (balanceAfter < 0) {
-            throw error("INSUFFICIENT_POINTS", HttpStatus.BAD_REQUEST, "积分余额不足");
+        BigDecimal balanceBefore = amount(account.getAvailablePoints());
+        BigDecimal balanceAfter = add(balanceBefore, request.amount());
+        if (isNegative(balanceAfter)) {
+            throw error("INSUFFICIENT_POINTS", HttpStatus.BAD_REQUEST, "Insufficient points");
         }
 
         PointTransactionType transactionType;
-        if (request.amount() > 0) {
+        if (isPositive(request.amount())) {
             transactionType = PointTransactionType.EARN;
-            account.setLifetimeEarnedPoints(addExact(account.getLifetimeEarnedPoints(), request.amount()));
+            account.setLifetimeEarnedPoints(add(amount(account.getLifetimeEarnedPoints()), request.amount()));
         } else {
             transactionType = PointTransactionType.DEDUCT;
             account.setLifetimeSpentPoints(
-                    addExact(account.getLifetimeSpentPoints(), negateExact(request.amount()))
+                    add(amount(account.getLifetimeSpentPoints()), negate(request.amount()))
             );
         }
         account.setAvailablePoints(balanceAfter);
@@ -101,13 +102,13 @@ public class StudentPointLedgerService {
                 .orElseThrow(() -> error(
                         "TRANSACTION_NOT_FOUND",
                         HttpStatus.NOT_FOUND,
-                        "积分流水不存在"
+                        "Point transaction does not exist"
                 ));
         if (original.getTransactionType() == PointTransactionType.REVERSE) {
             throw error(
                     "TRANSACTION_ALREADY_REVERSE",
                     HttpStatus.CONFLICT,
-                    "冲正流水不能再次冲正"
+                    "Reversal transaction cannot be reversed again"
             );
         }
 
@@ -120,14 +121,14 @@ public class StudentPointLedgerService {
             return validateIdempotentReversal(existing.get(), originalTransactionId, idempotencyKey);
         }
 
-        int reverseAmount = negateExact(original.getAmount());
-        int balanceBefore = account.getAvailablePoints();
-        int balanceAfter = addExact(balanceBefore, reverseAmount);
-        if (balanceAfter < 0) {
+        BigDecimal reverseAmount = negate(original.getAmount());
+        BigDecimal balanceBefore = amount(account.getAvailablePoints());
+        BigDecimal balanceAfter = add(balanceBefore, reverseAmount);
+        if (isNegative(balanceAfter)) {
             throw error(
                     "INSUFFICIENT_POINTS_FOR_REVERSAL",
                     HttpStatus.CONFLICT,
-                    "积分余额不足，无法冲正"
+                    "Insufficient points for reversal"
             );
         }
 
@@ -162,16 +163,16 @@ public class StudentPointLedgerService {
 
     private void validatePostRequest(PostRequest request) {
         if (request == null || request.studentId() == null || request.studentId() <= 0) {
-            throw error("INVALID_STUDENT_ID", HttpStatus.BAD_REQUEST, "学生 ID 无效");
+            throw error("INVALID_STUDENT_ID", HttpStatus.BAD_REQUEST, "Student ID is invalid");
         }
-        if (request.amount() == null || request.amount() == 0) {
-            throw error("INVALID_POINT_AMOUNT", HttpStatus.BAD_REQUEST, "积分变动值不能为零");
+        if (isZero(request.amount())) {
+            throw error("INVALID_POINT_AMOUNT", HttpStatus.BAD_REQUEST, "Point amount must not be zero");
         }
         if (request.sourceType() == null) {
-            throw error("POINT_SOURCE_TYPE_REQUIRED", HttpStatus.BAD_REQUEST, "积分来源类型不能为空");
+            throw error("POINT_SOURCE_TYPE_REQUIRED", HttpStatus.BAD_REQUEST, "Point source type is required");
         }
         if (isBlank(request.idempotencyKey())) {
-            throw error("IDEMPOTENCY_KEY_REQUIRED", HttpStatus.BAD_REQUEST, "幂等键不能为空");
+            throw error("IDEMPOTENCY_KEY_REQUIRED", HttpStatus.BAD_REQUEST, "Idempotency key is required");
         }
     }
 
@@ -180,7 +181,7 @@ public class StudentPointLedgerService {
             PostRequest request
     ) {
         boolean matches = Objects.equals(existing.getStudentId(), request.studentId())
-                && Objects.equals(existing.getAmount(), request.amount())
+                && sameAmount(existing.getAmount(), request.amount())
                 && existing.getTransactionType() == expectedTransactionType(request.amount())
                 && existing.getSourceType() == request.sourceType()
                 && Objects.equals(existing.getSourceId(), request.sourceId())
@@ -209,8 +210,8 @@ public class StudentPointLedgerService {
         return existing;
     }
 
-    private PointTransactionType expectedTransactionType(int amount) {
-        return amount > 0 ? PointTransactionType.EARN : PointTransactionType.DEDUCT;
+    private PointTransactionType expectedTransactionType(BigDecimal amount) {
+        return isPositive(amount) ? PointTransactionType.EARN : PointTransactionType.DEDUCT;
     }
 
     private StudentPointTransaction saveTransaction(StudentPointTransaction transaction) {
@@ -240,22 +241,22 @@ public class StudentPointLedgerService {
         return error(
                 "IDEMPOTENCY_KEY_CONFLICT",
                 HttpStatus.CONFLICT,
-                "幂等键已用于其他积分操作"
+                "Idempotency key is already used by another point operation"
         );
     }
 
     private void validateReversalInput(Long originalTransactionId, Actor actor, String reason) {
         if (originalTransactionId == null || originalTransactionId <= 0) {
-            throw error("TRANSACTION_ID_REQUIRED", HttpStatus.BAD_REQUEST, "原流水 ID 无效");
+            throw error("TRANSACTION_ID_REQUIRED", HttpStatus.BAD_REQUEST, "Original transaction ID is invalid");
         }
         if (actor == null || actor.operatorId() == null || actor.operatorId() <= 0 || isBlank(actor.operatorRole())) {
-            throw error("OPERATOR_REQUIRED", HttpStatus.BAD_REQUEST, "冲正操作人不能为空");
+            throw error("OPERATOR_REQUIRED", HttpStatus.BAD_REQUEST, "Reversal operator is required");
         }
         if (!"ADMIN".equalsIgnoreCase(actor.operatorRole())) {
-            throw error("ADMIN_OPERATOR_REQUIRED", HttpStatus.FORBIDDEN, "仅管理员可以冲正积分流水");
+            throw error("ADMIN_OPERATOR_REQUIRED", HttpStatus.FORBIDDEN, "Only administrators can reverse points");
         }
         if (isBlank(reason)) {
-            throw error("REVERSAL_REASON_REQUIRED", HttpStatus.BAD_REQUEST, "冲正原因不能为空");
+            throw error("REVERSAL_REASON_REQUIRED", HttpStatus.BAD_REQUEST, "Reversal reason is required");
         }
     }
 
@@ -264,10 +265,10 @@ public class StudentPointLedgerService {
                 .orElseThrow(() -> error(
                         "POINT_ACCOUNT_NOT_FOUND",
                         HttpStatus.NOT_FOUND,
-                        "学生积分账户不存在"
+                        "Student point account does not exist"
                 ));
         if (account.getStatus() != PointAccountStatus.ACTIVE) {
-            throw error("POINT_ACCOUNT_FROZEN", HttpStatus.CONFLICT, "学生积分账户已冻结");
+            throw error("POINT_ACCOUNT_FROZEN", HttpStatus.CONFLICT, "Student point account is frozen");
         }
         return account;
     }
@@ -295,7 +296,7 @@ public class StudentPointLedgerService {
             throw error(
                     "POINT_ACCOUNT_MISMATCH",
                     HttpStatus.CONFLICT,
-                    "积分流水与学生账户不匹配"
+                    "Point transaction does not match the student account"
             );
         }
     }
@@ -308,27 +309,39 @@ public class StudentPointLedgerService {
         transaction.setOperatorRole(actor.operatorRole());
     }
 
-    private int addExact(int left, int right) {
-        try {
-            return Math.addExact(left, right);
-        } catch (ArithmeticException ex) {
-            throw error("POINT_BALANCE_OVERFLOW", HttpStatus.CONFLICT, "积分数值超出允许范围");
-        }
+    private BigDecimal add(BigDecimal left, BigDecimal right) {
+        return amount(left).add(amount(right));
     }
 
-    private int negateExact(int value) {
-        try {
-            return Math.negateExact(value);
-        } catch (ArithmeticException ex) {
-            throw error("POINT_BALANCE_OVERFLOW", HttpStatus.CONFLICT, "积分数值超出允许范围");
-        }
+    private BigDecimal negate(BigDecimal value) {
+        return amount(value).negate();
+    }
+
+    private BigDecimal amount(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private boolean isPositive(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private boolean isNegative(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) < 0;
+    }
+
+    private boolean isZero(BigDecimal value) {
+        return value == null || value.compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    private boolean sameAmount(BigDecimal left, BigDecimal right) {
+        return left == null ? right == null : right != null && left.compareTo(right) == 0;
     }
 
     private StudentPointOperationException manualAdjustmentStateInvalid() {
         return error(
                 "MANUAL_ADJUSTMENT_STATE_INVALID",
                 HttpStatus.CONFLICT,
-                "手工积分调整单状态与原流水不一致"
+                "Manual point adjustment state does not match the original transaction"
         );
     }
 
@@ -345,7 +358,7 @@ public class StudentPointLedgerService {
 
     public record PostRequest(
             Long studentId,
-            Integer amount,
+            BigDecimal amount,
             PointSourceType sourceType,
             Long sourceId,
             String sourceKey,
@@ -354,5 +367,19 @@ public class StudentPointLedgerService {
             Actor actor,
             String reason
     ) {
+        public PostRequest(
+                Long studentId,
+                int amount,
+                PointSourceType sourceType,
+                Long sourceId,
+                String sourceKey,
+                String ruleCode,
+                String idempotencyKey,
+                Actor actor,
+                String reason
+        ) {
+            this(studentId, BigDecimal.valueOf(amount), sourceType, sourceId, sourceKey, ruleCode, idempotencyKey,
+                    actor, reason);
+        }
     }
 }

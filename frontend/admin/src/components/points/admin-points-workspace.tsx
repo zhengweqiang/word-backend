@@ -23,9 +23,11 @@ import {
     Pagination,
     ReasonOperationDialog,
     StudentPointAdjustmentDialog,
+    StudentPointRedemptionDialog,
     errorMessage,
     type AdjustmentTarget,
     type ReasonOperation,
+    type RedemptionTarget,
 } from "@/components/points/points-shared";
 
 type AdminTab = "accounts" | "transactions" | "events" | "rules";
@@ -36,13 +38,14 @@ const tabs: { value: AdminTab; label: string }[] = [
     { value: "rules", label: "规则" },
 ];
 const eventStatuses: ("ALL" | PointEventStatus)[] = ["ALL", "PENDING", "PROCESSING", "SUCCEEDED", "FAILED", "CANCELLED"];
-const sourceTypes: PointSourceType[] = ["STUDY_TASK", "STUDY_RECORD", "VIDEO_WATCH", "EXAM", "MANUAL_ADJUSTMENT", "ADMIN_CORRECTION", "REDEMPTION"];
+const sourceTypes: PointSourceType[] = ["STUDY_TASK", "STUDY_RECORD", "CLASSROOM_CHAT", "VIDEO_WATCH", "EXAM", "REDEMPTION"];
 type RuleScopeType = "GLOBAL" | "CLASSROOM" | "STUDY_PLAN" | "EXAM";
 const ruleScopeTypes: RuleScopeType[] = ["GLOBAL", "CLASSROOM", "STUDY_PLAN", "EXAM"];
 
 const sourceTypeLabels: Record<PointSourceType, string> = {
     STUDY_TASK: "学习任务",
     STUDY_RECORD: "学习记录",
+    CLASSROOM_CHAT: "班级聊天",
     VIDEO_WATCH: "视频观看",
     EXAM: "考试",
     MANUAL_ADJUSTMENT: "人工调整",
@@ -53,6 +56,7 @@ const sourceTypeLabels: Record<PointSourceType, string> = {
 const ruleCodeLabels: Record<string, string> = {
     STUDY_RECORD_CORRECT: "单词答对",
     DAILY_TASK_COMPLETED: "完成每日任务",
+    CLASSROOM_CHAT_CONTRIBUTION: "班级聊天贡献",
     VIDEO_WATCH: "视频观看",
     MANUAL_ADJUSTMENT: "人工调整",
     ADMIN_CORRECTION: "管理员冲正",
@@ -102,6 +106,18 @@ function sourceTypeLabel(sourceType: PointSourceType) {
     return sourceTypeLabels[sourceType] ?? sourceType;
 }
 
+function ruleCodeForSourceType(sourceType: PointSourceType) {
+    const ruleCodes: Partial<Record<PointSourceType, string>> = {
+        STUDY_TASK: "DAILY_TASK_COMPLETED",
+        STUDY_RECORD: "STUDY_RECORD_CORRECT",
+        CLASSROOM_CHAT: "CLASSROOM_CHAT_CONTRIBUTION",
+        VIDEO_WATCH: "VIDEO_WATCH",
+        EXAM: "EXAM",
+        REDEMPTION: "REDEMPTION",
+    };
+    return ruleCodes[sourceType] ?? sourceType;
+}
+
 function transactionSourceLabel(ruleCode: string | null | undefined, sourceType: PointSourceType) {
     const normalizedRuleCode = ruleCode?.trim().toUpperCase();
     if (normalizedRuleCode && ruleCodeLabels[normalizedRuleCode]) {
@@ -145,6 +161,7 @@ export function AdminPointsWorkspace() {
     const [eventStatus, setEventStatus] = createSignal<"ALL" | PointEventStatus>("ALL");
     const [operation, setOperation] = createSignal<ReasonOperation>();
     const [adjustmentTarget, setAdjustmentTarget] = createSignal<AdjustmentTarget>();
+    const [redemptionTarget, setRedemptionTarget] = createSignal<RedemptionTarget>();
     const [selectedEventId, setSelectedEventId] = createSignal<number>();
 
     const [accounts, accountsActions] = createResource(
@@ -164,7 +181,7 @@ export function AdminPointsWorkspace() {
         (params) => api.listAdminPointEvents(params),
     );
     const [rules, ruleActions] = createResource(
-        () => activeTab() === "rules",
+        () => activeTab() === "rules" || activeTab() === "accounts",
         (enabled) => enabled ? api.listPointRules() : Promise.resolve([]),
     );
     const [classrooms] = createResource(
@@ -176,6 +193,11 @@ export function AdminPointsWorkspace() {
         (enabled) => enabled ? api.listStudyPlans() : Promise.resolve([]),
     );
     const [attempts] = createResource(selectedEventId, (eventId) => api.listPointEventAttempts(eventId));
+    const redemptionMinimumPoints = createMemo(() => {
+        const rule = (rules() ?? []).find((item) => item.code === "REDEMPTION" && item.enabled);
+        const basePoints = rule?.basePoints ?? 1;
+        return basePoints > 0 ? basePoints : 1;
+    });
 
     const refreshCurrent = () => {
         if (activeTab() === "accounts") void accountsActions.refetch();
@@ -208,6 +230,7 @@ export function AdminPointsWorkspace() {
                     resource={accounts}
                     page={accountPage()}
                     onAdjust={(studentId, studentName) => setAdjustmentTarget({ studentId, studentName, actorRole: "ADMIN" })}
+                    onRedeem={(target) => setRedemptionTarget(target)}
                     onPageChange={setAccountPage}
                 />
             </Show>
@@ -270,6 +293,12 @@ export function AdminPointsWorkspace() {
                 onClose={() => setAdjustmentTarget(undefined)}
                 onSuccess={() => void accountsActions.refetch()}
             />
+            <StudentPointRedemptionDialog
+                target={redemptionTarget()}
+                minimumPoints={redemptionMinimumPoints()}
+                onClose={() => setRedemptionTarget(undefined)}
+                onSuccess={() => void accountsActions.refetch()}
+            />
         </div>
     );
 }
@@ -285,6 +314,7 @@ function AdminAccountsView(props: {
     page: number;
     onPageChange: (page: number) => void;
     onAdjust: (studentId: number, studentName: string) => void;
+    onRedeem: (target: RedemptionTarget) => void;
 }) {
     const rows = () => props.resource()?.content ?? [];
     return (
@@ -293,7 +323,7 @@ function AdminAccountsView(props: {
             <PageState loading={props.resource.loading} error={props.resource.error} empty={!rows().length} emptyText="暂无积分账户" />
             <Show when={!props.resource.loading && !props.resource.error && rows().length}>
                 <Table><TableRoot><TableHead><TableRow><TableHeaderCell>学生</TableHeaderCell><TableHeaderCell>可用</TableHeaderCell><TableHeaderCell>冻结</TableHeaderCell><TableHeaderCell>累计获得</TableHeaderCell><TableHeaderCell>累计支出</TableHeaderCell><TableHeaderCell>状态</TableHeaderCell><TableHeaderCell class="text-right">操作</TableHeaderCell></TableRow></TableHead>
-                    <TableBody><For each={rows()}>{(account) => <TableRow><TableCell><div class="font-medium">{studentDisplayName(account)}</div><div class="text-xs text-muted-foreground">{studentSecondaryLabel(account) || "学生"} · 账户 #{account.accountId}</div></TableCell><TableCell class="font-semibold">{formatNumber(account.availablePoints)}</TableCell><TableCell>{formatNumber(account.frozenPoints)}</TableCell><TableCell>{formatNumber(account.lifetimeEarnedPoints)}</TableCell><TableCell>{formatNumber(account.lifetimeSpentPoints)}</TableCell><TableCell><Badge variant={statusVariant(account.status)}>{statusText[account.status] ?? account.status}</Badge></TableCell><TableCell class="text-right"><Button size="sm" variant="outline" onClick={() => props.onAdjust(account.studentId, studentDisplayName(account))}>人工调整</Button></TableCell></TableRow>}</For></TableBody>
+                    <TableBody><For each={rows()}>{(account) => <TableRow><TableCell><div class="font-medium">{studentDisplayName(account)}</div><div class="text-xs text-muted-foreground">{studentSecondaryLabel(account) || "学生"} · 账户 #{account.accountId}</div></TableCell><TableCell class="font-semibold">{formatNumber(account.availablePoints)}</TableCell><TableCell>{formatNumber(account.frozenPoints)}</TableCell><TableCell>{formatNumber(account.lifetimeEarnedPoints)}</TableCell><TableCell>{formatNumber(account.lifetimeSpentPoints)}</TableCell><TableCell><Badge variant={statusVariant(account.status)}>{statusText[account.status] ?? account.status}</Badge></TableCell><TableCell class="text-right"><div class="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => props.onRedeem({ studentId: account.studentId, studentName: studentDisplayName(account), availablePoints: account.availablePoints })}>积分兑换</Button><Button size="sm" variant="outline" onClick={() => props.onAdjust(account.studentId, studentDisplayName(account))}>人工调整</Button></div></TableCell></TableRow>}</For></TableBody>
                 </TableRoot></Table>
                 <Pagination page={props.page} totalPages={props.resource()?.totalPages ?? 1} totalElements={props.resource()?.totalElements ?? 0} onPageChange={props.onPageChange} />
             </Show>
@@ -362,7 +392,7 @@ function AdminRulesView(props: {
     const [editingRule, setEditingRule] = createSignal<StudentPointRuleResponse>();
     const [name, setName] = createSignal("");
     const [description, setDescription] = createSignal("");
-    const [sourceType, setSourceType] = createSignal<PointSourceType>("MANUAL_ADJUSTMENT");
+    const [sourceType, setSourceType] = createSignal<PointSourceType>("STUDY_RECORD");
     const [basePoints, setBasePoints] = createSignal("0");
     const [scopeType, setScopeType] = createSignal<RuleScopeType>("GLOBAL");
     const [scopeId, setScopeId] = createSignal("");
@@ -382,7 +412,7 @@ function AdminRulesView(props: {
         return [];
     };
     const valid = createMemo(() => name().trim().length > 0
-        && Number.isInteger(Number(basePoints()))
+        && Number.isFinite(Number(basePoints()))
         && Number(basePoints()) !== 0
         && (!requiresScopeId() || Boolean(scopeId()))
         && reason().trim().length <= 500);
@@ -391,7 +421,7 @@ function AdminRulesView(props: {
         setEditingRule(rule);
         setName(rule?.name ?? "");
         setDescription(rule?.description ?? "");
-        setSourceType(rule?.sourceType ?? "MANUAL_ADJUSTMENT");
+        setSourceType(rule?.sourceType ?? "STUDY_RECORD");
         setBasePoints(String(rule?.basePoints ?? 0));
         setScopeType(normalizeRuleScopeType(rule?.scopeType));
         setScopeId(rule?.scopeId ? String(rule.scopeId) : "");
@@ -422,7 +452,7 @@ function AdminRulesView(props: {
         try {
             const rule = editingRule();
             if (rule) await api.updatePointRule(rule.id, common);
-            else await api.createPointRule({ code: sourceType(), ...common });
+            else await api.createPointRule({ code: ruleCodeForSourceType(sourceType()), ...common });
             setDialogOpen(false);
             props.onChanged();
         } catch (requestError) {

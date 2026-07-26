@@ -4,6 +4,7 @@ import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.PointEventStatus;
 import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointEvent;
+import java.math.BigDecimal;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -19,14 +20,14 @@ public class StudentPointEventFactory {
     public StudentPointEvent manualAdjustment(
             Long studentId,
             Long adjustmentRequestId,
-            Integer amount,
+            BigDecimal amount,
             Long operatorId,
             String operatorRole,
             String reason
     ) {
         validatePositive(studentId, "studentId");
         validatePositive(adjustmentRequestId, "adjustmentRequestId");
-        if (amount == null || amount == 0) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0) {
             throw invalidRequest("amount must not be zero");
         }
         validatePositive(operatorId, "operatorId");
@@ -60,7 +61,7 @@ public class StudentPointEventFactory {
                 && java.util.Objects.equals(existing.getSourceKey(), expected.getSourceKey())
                 && java.util.Objects.equals(existing.getRuleCode(), expected.getRuleCode())
                 && java.util.Objects.equals(existing.getRuleName(), expected.getRuleName())
-                && java.util.Objects.equals(existing.getPoints(), expected.getPoints())
+                && sameAmount(existing.getPoints(), expected.getPoints())
                 && java.util.Objects.equals(existing.getIdempotencyKey(), expected.getIdempotencyKey())
                 && java.util.Objects.equals(existing.getOperatorId(), expected.getOperatorId())
                 && java.util.Objects.equals(existing.getOperatorRole(), expected.getOperatorRole())
@@ -96,5 +97,9 @@ public class StudentPointEventFactory {
                 HttpStatus.BAD_REQUEST,
                 message
         );
+    }
+
+    private boolean sameAmount(BigDecimal left, BigDecimal right) {
+        return left == null ? right == null : right != null && left.compareTo(right) == 0;
     }
 }

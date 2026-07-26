@@ -8,6 +8,7 @@ import com.example.words.dto.StudentPointRuleResponse;
 import com.example.words.dto.StudentPointTransactionResponse;
 import com.example.words.model.AppUser;
 import com.example.words.model.PointEventStatus;
+import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointAccount;
 import com.example.words.model.StudentPointEvent;
 import com.example.words.model.StudentPointTransaction;
@@ -18,6 +19,7 @@ import com.example.words.repository.StudentPointEventRepository;
 import com.example.words.repository.StudentPointRuleAuditRepository;
 import com.example.words.repository.StudentPointRuleRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -35,6 +37,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class StudentPointAdminQueryService {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final EnumSet<PointSourceType> OPERATIONAL_RULE_SOURCES = EnumSet.of(
+            PointSourceType.MANUAL_ADJUSTMENT,
+            PointSourceType.ADMIN_CORRECTION
+    );
 
     private final StudentPointAccountRepository accountRepository;
     private final StudentPointTransactionRepository transactionRepository;
@@ -95,6 +101,7 @@ public class StudentPointAdminQueryService {
     @Transactional(readOnly = true)
     public List<StudentPointRuleResponse> getRules() {
         return ruleRepository.findAll(Sort.by(Sort.Direction.ASC, "id")).stream()
+                .filter(rule -> !OPERATIONAL_RULE_SOURCES.contains(rule.getSourceType()))
                 .map(StudentPointRuleResponse::from)
                 .toList();
     }

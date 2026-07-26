@@ -122,6 +122,29 @@ class StudentPointRuleServiceTest {
     }
 
     @Test
+    void operationalManualAndCorrectionSourcesCannotBeConfiguredAsRules() {
+        StudentPointOperationException manualFailure = assertThrows(StudentPointOperationException.class, () ->
+                service.create(admin(), new StudentPointRuleCreateRequest(
+                        "MANUAL_ADJUSTMENT", "manual", null, PointSourceType.MANUAL_ADJUSTMENT, 1,
+                        null, null, true, "test")));
+        assertEquals("POINT_RULE_SOURCE_NOT_CONFIGURABLE", manualFailure.getCode());
+
+        StudentPointRule rule = StudentPointRule.create(
+                "STUDY_RECORD_CORRECT", "correct", PointSourceType.STUDY_RECORD, 1);
+        rule.setId(3L);
+        when(ruleRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(rule));
+        when(eventRepository.existsByRuleCodeAndStatusIn(
+                org.mockito.ArgumentMatchers.eq("STUDY_RECORD_CORRECT"), any())).thenReturn(false);
+
+        StudentPointOperationException correctionFailure = assertThrows(StudentPointOperationException.class, () ->
+                service.update(admin(), 3L, new StudentPointRuleUpdateRequest(
+                        "correction", null, PointSourceType.ADMIN_CORRECTION, 1,
+                        "GLOBAL", null, true, "test")));
+        assertEquals("POINT_RULE_SOURCE_NOT_CONFIGURABLE", correctionFailure.getCode());
+        verify(ruleRepository, never()).save(any());
+    }
+
+    @Test
     void createAllowsBlankReasonAndWritesDefaultAuditReason() {
         when(ruleRepository.findByCode("OPTIONAL_REASON")).thenReturn(Optional.empty());
         when(ruleRepository.saveAndFlush(any())).thenAnswer(invocation -> {

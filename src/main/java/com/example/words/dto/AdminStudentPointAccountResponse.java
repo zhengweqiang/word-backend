@@ -2,6 +2,7 @@ package com.example.words.dto;
 
 import com.example.words.model.PointAccountStatus;
 import com.example.words.model.StudentPointAccount;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record AdminStudentPointAccountResponse(
@@ -9,10 +10,10 @@ public record AdminStudentPointAccountResponse(
         Long studentId,
         String studentUsername,
         String studentName,
-        Integer availablePoints,
-        Integer frozenPoints,
-        Integer lifetimeEarnedPoints,
-        Integer lifetimeSpentPoints,
+        BigDecimal availablePoints,
+        BigDecimal frozenPoints,
+        BigDecimal lifetimeEarnedPoints,
+        BigDecimal lifetimeSpentPoints,
         PointAccountStatus status,
         LocalDateTime updatedAt
 ) {

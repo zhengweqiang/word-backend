@@ -1,6 +1,7 @@
 package com.example.words.repository;
 
 import com.example.words.model.StudentPointTransaction;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -33,7 +34,7 @@ public interface StudentPointTransactionRepository extends JpaRepository<Student
                       and reversal.reversedTransactionId = transaction.id
                )
             """)
-    Long sumEarnedByStudentIdBetween(
+    BigDecimal sumEarnedByStudentIdBetween(
             @Param("studentId") Long studentId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end
@@ -64,6 +65,6 @@ public interface StudentPointTransactionRepository extends JpaRepository<Student
 
         Long getStudentId();
 
-        Long getTotal();
+        BigDecimal getTotal();
     }
 }

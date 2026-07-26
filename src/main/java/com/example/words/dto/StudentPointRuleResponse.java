@@ -2,6 +2,7 @@ package com.example.words.dto;
 
 import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointRule;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record StudentPointRuleResponse(
@@ -10,7 +11,7 @@ public record StudentPointRuleResponse(
         String name,
         String description,
         PointSourceType sourceType,
-        Integer basePoints,
+        BigDecimal basePoints,
         String scopeType,
         Long scopeId,
         Boolean enabled,

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+﻿import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { PointsPage } from "@/pages/points-page";
@@ -22,6 +22,7 @@ vi.mock("@/lib/api", () => ({
         cancelPointEvent: vi.fn(),
         reversePointTransaction: vi.fn(),
         adjustAdminStudentPoints: vi.fn(),
+        redeemAdminStudentPoints: vi.fn(),
         listPointRules: vi.fn(),
         createPointRule: vi.fn(),
         updatePointRule: vi.fn(),
@@ -83,6 +84,88 @@ describe("PointsPage", () => {
         expect(screen.getByText("120")).toBeInTheDocument();
         expect(api.listAdminPointAccounts).toHaveBeenCalledWith({ page: 0, size: 20 });
         expect(api.listTeacherPointStudents).not.toHaveBeenCalled();
+    });
+
+    it("lets administrators redeem available points from the account list", async () => {
+        vi.mocked(api.listAdminPointAccounts).mockResolvedValue(page([{
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "Student 42",
+            availablePoints: 120,
+            frozenPoints: 0,
+            lifetimeEarnedPoints: 180,
+            lifetimeSpentPoints: 60,
+            status: "ACTIVE",
+        }]));
+        vi.mocked(api.listPointRules).mockResolvedValue([{
+            id: 20,
+            code: "REDEMPTION",
+            name: "积分兑换",
+            sourceType: "REDEMPTION",
+            basePoints: 5,
+            enabled: true,
+        }]);
+        vi.mocked(api.redeemAdminStudentPoints).mockResolvedValue({
+            id: 100,
+            accountId: 10,
+            studentId: 42,
+            transactionType: "DEDUCT",
+            amount: -8,
+            balanceBefore: 120,
+            balanceAfter: 112,
+            sourceType: "REDEMPTION",
+            sourceKey: "redemption:test",
+            ruleCode: "REDEMPTION",
+            reason: "Prize",
+        });
+
+        render(() => <PointsPage />);
+        expect(await screen.findByText("student42")).toBeInTheDocument();
+        await fireEvent.click(screen.getByRole("button", { name: "积分兑换" }));
+        await fireEvent.input(screen.getByRole("spinbutton"), { target: { value: "8" } });
+        await fireEvent.input(screen.getByRole("textbox"), { target: { value: "Prize" } });
+        await fireEvent.click(screen.getByRole("button", { name: "确认兑换" }));
+
+        await waitFor(() => expect(api.redeemAdminStudentPoints).toHaveBeenCalledWith(42, expect.objectContaining({
+            points: 8,
+            reason: "Prize",
+        })));
+        const payload = vi.mocked(api.redeemAdminStudentPoints).mock.calls[0]?.[1];
+        expect(payload?.requestKey).toBeTruthy();
+        expect(api.listAdminPointAccounts).toHaveBeenCalledTimes(2);
+    });
+
+    it("requires redemption points to meet the redemption rule base points", async () => {
+        vi.mocked(api.listAdminPointAccounts).mockResolvedValue(page([{
+            accountId: 10,
+            studentId: 42,
+            studentUsername: "student42",
+            studentName: "Student 42",
+            availablePoints: 120,
+            frozenPoints: 0,
+            lifetimeEarnedPoints: 180,
+            lifetimeSpentPoints: 60,
+            status: "ACTIVE",
+        }]));
+        vi.mocked(api.listPointRules).mockResolvedValue([{
+            id: 20,
+            code: "REDEMPTION",
+            name: "积分兑换",
+            sourceType: "REDEMPTION",
+            basePoints: 20,
+            enabled: true,
+        }]);
+
+        render(() => <PointsPage />);
+        expect(await screen.findByText("student42")).toBeInTheDocument();
+        await fireEvent.click(screen.getByRole("button", { name: "积分兑换" }));
+        await fireEvent.input(screen.getByRole("spinbutton"), { target: { value: "19" } });
+        await fireEvent.input(screen.getByRole("textbox"), { target: { value: "Prize" } });
+
+        expect(await screen.findByText("兑换积分数不能小于积分兑换规则分值 20")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "确认兑换" })).toBeDisabled();
+        expect(api.redeemAdminStudentPoints).not.toHaveBeenCalled();
     });
 
     it("shows student usernames instead of numeric IDs in admin point tables", async () => {
@@ -163,7 +246,7 @@ describe("PointsPage", () => {
             sourceType: "MANUAL_ADJUSTMENT",
             sourceKey: "manual:5",
             ruleCode: "MANUAL_ADJUSTMENT",
-            reason: "管理员奖励1分首次完成者",
+            reason: "manual bonus",
         }, {
             id: 3,
             accountId: 10,
@@ -238,12 +321,12 @@ describe("PointsPage", () => {
 
         const confirm = screen.getByRole("button", { name: "确认重试" });
         expect(confirm).toBeDisabled();
-        await fireEvent.input(screen.getByLabelText("操作原因"), { target: { value: "数据库恢复，核对后重试" } });
+        await fireEvent.input(screen.getByLabelText("操作原因"), { target: { value: "retry after db restore" } });
         expect(confirm).not.toBeDisabled();
         await fireEvent.click(confirm);
 
         await waitFor(() => expect(api.retryPointEvent).toHaveBeenCalledWith(7, {
-            reason: "数据库恢复，核对后重试",
+            reason: "retry after db restore",
         }));
     });
 
@@ -271,7 +354,7 @@ describe("PointsPage", () => {
     it("uses Chinese source and scope pickers and derives the hidden rule code from source type", async () => {
         vi.mocked(api.listClassrooms).mockResolvedValue([{
             id: 3,
-            name: "一班",
+            name: "Class 1",
             teacherId: 2,
             teacherName: "王老师",
             studentCount: 12,
@@ -313,9 +396,10 @@ describe("PointsPage", () => {
         await fireEvent.click(await screen.findByRole("button", { name: "新增规则" }));
         expect(screen.queryByLabelText("规则编码")).not.toBeInTheDocument();
         expect(await screen.findByRole("option", { name: "学习记录" })).toBeInTheDocument();
+        expect(await screen.findByRole("option", { name: "班级聊天" })).toBeInTheDocument();
         await fireEvent.change(screen.getByLabelText("来源类型"), { target: { value: "STUDY_RECORD" } });
         await fireEvent.input(screen.getByLabelText("规则名称"), { target: { value: "答对单词" } });
-        await fireEvent.input(screen.getByLabelText("基础分值"), { target: { value: "3" } });
+        await fireEvent.input(screen.getByRole("spinbutton"), { target: { value: "3" } });
         await fireEvent.change(screen.getByLabelText("范围类型"), { target: { value: "CLASSROOM" } });
         await fireEvent.change(await screen.findByLabelText("范围ID"), { target: { value: "3" } });
 
@@ -324,7 +408,7 @@ describe("PointsPage", () => {
         await fireEvent.click(save);
 
         await waitFor(() => expect(api.createPointRule).toHaveBeenCalledWith(expect.objectContaining({
-            code: "STUDY_RECORD",
+            code: "STUDY_RECORD_CORRECT",
             sourceType: "STUDY_RECORD",
             basePoints: 3,
             scopeType: "CLASSROOM",
@@ -341,7 +425,7 @@ describe("PointsPage", () => {
         await fireEvent.click(await screen.findByRole("button", { name: "新增规则" }));
 
         expect(screen.getByLabelText("规则名称")).toBeRequired();
-        expect(screen.getByLabelText("基础分值")).toBeRequired();
+        expect(screen.getByRole("spinbutton")).toBeRequired();
         expect(screen.getByLabelText("变更原因")).not.toBeRequired();
     });
 
@@ -461,7 +545,7 @@ describe("PointsPage", () => {
         render(() => <PointsPage />);
         expect(await screen.findByText("小明")).toBeInTheDocument();
         await fireEvent.click(screen.getByRole("button", { name: "人工调整" }));
-        await fireEvent.input(screen.getByLabelText("调整分值"), { target: { value: "5" } });
+        await fireEvent.input(screen.getByRole("spinbutton"), { target: { value: "5" } });
         await fireEvent.input(screen.getByLabelText("调整原因"), { target: { value: "课堂表现优秀" } });
         await fireEvent.click(screen.getByRole("button", { name: "确认调整" }));
         expect(await screen.findByText("network")).toBeInTheDocument();

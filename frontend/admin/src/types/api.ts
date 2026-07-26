@@ -65,6 +65,7 @@ export type PointTransactionType = "EARN" | "DEDUCT" | "FREEZE" | "UNFREEZE" | "
 export type PointSourceType =
     | "STUDY_TASK"
     | "STUDY_RECORD"
+    | "CLASSROOM_CHAT"
     | "VIDEO_WATCH"
     | "EXAM"
     | "MANUAL_ADJUSTMENT"
@@ -176,6 +177,12 @@ export interface StudentPointAdjustmentPayload {
     amount: number;
     reason: string;
     replacesAdjustmentRequestId?: number;
+}
+
+export interface StudentPointRedemptionPayload {
+    requestKey: string;
+    points: number;
+    reason: string;
 }
 
 export interface StudentPointAdjustmentOutcome {

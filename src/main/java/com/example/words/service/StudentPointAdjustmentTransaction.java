@@ -11,6 +11,7 @@ import com.example.words.model.StudentPointEvent;
 import com.example.words.model.UserRole;
 import com.example.words.repository.StudentPointAdjustmentRequestRepository;
 import com.example.words.repository.StudentPointEventRepository;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -184,11 +185,21 @@ public class StudentPointAdjustmentTransaction {
     public record CreateCommand(
             String requestKey,
             Long studentId,
-            Integer amount,
+            BigDecimal amount,
             String reason,
             AppUser actor,
             Long replacesRequestId
     ) {
+        public CreateCommand(
+                String requestKey,
+                Long studentId,
+                int amount,
+                String reason,
+                AppUser actor,
+                Long replacesRequestId
+        ) {
+            this(requestKey, studentId, BigDecimal.valueOf(amount), reason, actor, replacesRequestId);
+        }
     }
 
     public record Workflow(

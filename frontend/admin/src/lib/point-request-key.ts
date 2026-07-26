@@ -8,3 +8,10 @@ export function createPointAdjustmentRequestKey(
     const roleCode = actorRole === "ADMIN" ? "a" : "t";
     return `pa:${roleCode}:${studentId}:${idFactory()}`;
 }
+
+export function createPointRedemptionRequestKey(
+    studentId: number,
+    idFactory: () => string = () => crypto.randomUUID(),
+) {
+    return `pr:a:${studentId}:${idFactory()}`;
+}
