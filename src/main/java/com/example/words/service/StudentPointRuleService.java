@@ -5,6 +5,7 @@ import com.example.words.dto.StudentPointRuleUpdateRequest;
 import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.AppUser;
 import com.example.words.model.PointEventStatus;
+import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointRule;
 import com.example.words.model.StudentPointRuleAudit;
 import com.example.words.model.UserRole;
@@ -13,6 +14,7 @@ import com.example.words.repository.StudentPointRuleAuditRepository;
 import com.example.words.repository.StudentPointRuleRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.util.EnumSet;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,10 @@ public class StudentPointRuleService {
             PointEventStatus.PROCESSING,
             PointEventStatus.FAILED
     );
+    private static final EnumSet<PointSourceType> OPERATIONAL_RULE_SOURCES = EnumSet.of(
+            PointSourceType.MANUAL_ADJUSTMENT,
+            PointSourceType.ADMIN_CORRECTION
+    );
 
     private final StudentPointRuleRepository ruleRepository;
     private final StudentPointEventRepository eventRepository;
@@ -43,6 +49,7 @@ public class StudentPointRuleService {
     public StudentPointRule create(AppUser actor, StudentPointRuleCreateRequest request) {
         validateAdmin(actor);
         validatePoints(request.basePoints());
+        validateConfigurableSource(request.sourceType());
         String code = normalizeCode(request.code());
         if (ruleRepository.findByCode(code).isPresent()) {
             throw error("POINT_RULE_CODE_EXISTS", HttpStatus.CONFLICT, "Point rule code already exists");
@@ -76,6 +83,7 @@ public class StudentPointRuleService {
             throw error("POINT_RULE_HAS_UNFINISHED_EVENTS", HttpStatus.CONFLICT,
                     "Point rule has unfinished events; process or cancel them before editing the rule");
         }
+        validateConfigurableSource(request.sourceType());
         RuleSnapshot before = snapshot(rule);
         rule.setName(request.name().trim());
         rule.setDescription(normalizeNullable(request.description()));
@@ -133,10 +141,20 @@ public class StudentPointRuleService {
         }
     }
 
-    private void validatePoints(Integer points) {
-        if (points == null || points == 0) {
+    private void validatePoints(BigDecimal points) {
+        if (points == null || points.compareTo(BigDecimal.ZERO) == 0) {
             throw error("INVALID_POINT_RULE_POINTS", HttpStatus.BAD_REQUEST,
                     "Point rule base points must not be zero");
+        }
+    }
+
+    private void validateConfigurableSource(PointSourceType sourceType) {
+        if (sourceType == null || OPERATIONAL_RULE_SOURCES.contains(sourceType)) {
+            throw error(
+                    "POINT_RULE_SOURCE_NOT_CONFIGURABLE",
+                    HttpStatus.CONFLICT,
+                    "Manual adjustment and admin correction are operational point sources"
+            );
         }
     }
 
@@ -189,7 +207,7 @@ public class StudentPointRuleService {
             String name,
             String description,
             com.example.words.model.PointSourceType sourceType,
-            Integer basePoints,
+            BigDecimal basePoints,
             String scopeType,
             Long scopeId,
             Boolean enabled

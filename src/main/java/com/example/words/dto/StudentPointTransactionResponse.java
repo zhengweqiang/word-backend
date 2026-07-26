@@ -3,6 +3,7 @@ package com.example.words.dto;
 import com.example.words.model.PointSourceType;
 import com.example.words.model.PointTransactionType;
 import com.example.words.model.StudentPointTransaction;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record StudentPointTransactionResponse(
@@ -12,9 +13,9 @@ public record StudentPointTransactionResponse(
         String studentUsername,
         String studentName,
         PointTransactionType transactionType,
-        Integer amount,
-        Integer balanceBefore,
-        Integer balanceAfter,
+        BigDecimal amount,
+        BigDecimal balanceBefore,
+        BigDecimal balanceAfter,
         PointSourceType sourceType,
         Long sourceId,
         String sourceKey,

@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Data;
@@ -49,8 +50,8 @@ public class StudentPointAdjustmentRequest {
     @Column(name = "student_id", nullable = false)
     private Long studentId;
 
-    @Column(name = "amount", nullable = false)
-    private Integer amount;
+    @Column(name = "amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal amount;
 
     @Column(name = "reason", nullable = false, length = 500)
     private String reason;
@@ -90,7 +91,7 @@ public class StudentPointAdjustmentRequest {
     public static StudentPointAdjustmentRequest create(
             String requestKey,
             Long studentId,
-            Integer amount,
+            BigDecimal amount,
             String reason,
             Long requestedBy,
             String requestedRole,
@@ -106,5 +107,33 @@ public class StudentPointAdjustmentRequest {
         request.replacesRequestId = replacesRequestId;
         request.status = PointAdjustmentStatus.PENDING;
         return request;
+    }
+
+    public static StudentPointAdjustmentRequest create(
+            String requestKey,
+            Long studentId,
+            Integer amount,
+            String reason,
+            Long requestedBy,
+            String requestedRole,
+            Long replacesRequestId
+    ) {
+        return create(
+                requestKey,
+                studentId,
+                amount == null ? null : BigDecimal.valueOf(amount),
+                reason,
+                requestedBy,
+                requestedRole,
+                replacesRequestId
+        );
+    }
+
+    public void setAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
+    public void setAmount(Integer amount) {
+        this.amount = amount == null ? null : BigDecimal.valueOf(amount);
     }
 }

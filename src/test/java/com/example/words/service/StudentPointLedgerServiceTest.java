@@ -21,6 +21,7 @@ import com.example.words.model.StudentPointTransaction;
 import com.example.words.repository.StudentPointAccountRepository;
 import com.example.words.repository.StudentPointAdjustmentRequestRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,6 +99,38 @@ class StudentPointLedgerServiceTest {
         assertEquals(25, account.getLifetimeEarnedPoints());
         assertEquals(5, account.getLifetimeSpentPoints());
         verify(accountRepository).save(account);
+    }
+
+    @Test
+    void postShouldEarnFractionalPointsAndCaptureDecimalSnapshots() {
+        StudentPointAccount account = StudentPointAccount.create(42L);
+        account.setId(7L);
+        account.setAvailablePoints(new BigDecimal("1.50"));
+        account.setFrozenPoints(BigDecimal.ZERO);
+        account.setLifetimeEarnedPoints(new BigDecimal("2.00"));
+        account.setLifetimeSpentPoints(BigDecimal.ZERO);
+        account.setStatus(PointAccountStatus.ACTIVE);
+        when(transactionRepository.findByIdempotencyKey("class-chat:1"))
+                .thenReturn(Optional.empty());
+        when(accountRepository.findByStudentIdForUpdate(42L)).thenReturn(Optional.of(account));
+
+        StudentPointTransaction result = ledgerService.post(new StudentPointLedgerService.PostRequest(
+                42L,
+                new BigDecimal("0.50"),
+                PointSourceType.CLASSROOM_CHAT,
+                501L,
+                "classroom-chat:100:message:501:student:42",
+                "CLASSROOM_CHAT_CONTRIBUTION",
+                "class-chat:1",
+                SYSTEM_ACTOR,
+                "班级聊天贡献"
+        ));
+
+        assertEquals(new BigDecimal("0.50"), result.getAmount());
+        assertEquals(new BigDecimal("1.50"), result.getBalanceBefore());
+        assertEquals(new BigDecimal("2.00"), result.getBalanceAfter());
+        assertEquals(new BigDecimal("2.00"), account.getAvailablePoints());
+        assertEquals(new BigDecimal("2.50"), account.getLifetimeEarnedPoints());
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.example.words.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.example.words.model.AppUser;
@@ -10,6 +11,7 @@ import com.example.words.model.PointSourceType;
 import com.example.words.model.PointTransactionType;
 import com.example.words.model.StudentPointAccount;
 import com.example.words.model.StudentPointEvent;
+import com.example.words.model.StudentPointRule;
 import com.example.words.model.StudentPointTransaction;
 import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.StudentPointAccountRepository;
@@ -26,6 +28,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class StudentPointAdminQueryServiceTest {
@@ -119,6 +122,22 @@ class StudentPointAdminQueryServiceTest {
 
         assertEquals("student42", response.studentUsername());
         assertEquals("小明", response.studentName());
+    }
+
+    @Test
+    void ruleRowsExcludeOperationalManualAndCorrectionSources() {
+        StudentPointRule studyRecord = StudentPointRule.create(
+                "STUDY_RECORD_CORRECT", "correct", PointSourceType.STUDY_RECORD, 1);
+        StudentPointRule manual = StudentPointRule.create(
+                "MANUAL_ADJUSTMENT", "manual", PointSourceType.MANUAL_ADJUSTMENT, 1);
+        StudentPointRule correction = StudentPointRule.create(
+                "ADMIN_CORRECTION", "correction", PointSourceType.ADMIN_CORRECTION, 1);
+        when(ruleRepository.findAll(any(Sort.class))).thenReturn(List.of(studyRecord, manual, correction));
+
+        var response = service.getRules();
+
+        assertEquals(1, response.size());
+        assertEquals("STUDY_RECORD_CORRECT", response.get(0).code());
     }
 
     private AppUser student(Long id, String username, String displayName) {

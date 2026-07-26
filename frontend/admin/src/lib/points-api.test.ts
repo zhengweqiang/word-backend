@@ -55,6 +55,11 @@ describe("student points API", () => {
         await api.listTeacherPointStudents({ page: 0, size: 20, name: "小明" });
         await api.adjustTeacherStudentPoints(42, payload);
         await api.adjustAdminStudentPoints(42, payload);
+        await api.redeemAdminStudentPoints(42, {
+            requestKey: "point-redemption:admin:42:fixed",
+            points: 8,
+            reason: "prize",
+        });
 
         expect(fetch).toHaveBeenNthCalledWith(
             1,
@@ -70,6 +75,18 @@ describe("student points API", () => {
             3,
             "/api/admin/points/students/42/adjustments",
             expect.objectContaining({ method: "POST", body: JSON.stringify(payload) }),
+        );
+        expect(fetch).toHaveBeenNthCalledWith(
+            4,
+            "/api/admin/points/students/42/redemptions",
+            expect.objectContaining({
+                method: "POST",
+                body: JSON.stringify({
+                    requestKey: "point-redemption:admin:42:fixed",
+                    points: 8,
+                    reason: "prize",
+                }),
+            }),
         );
     });
 

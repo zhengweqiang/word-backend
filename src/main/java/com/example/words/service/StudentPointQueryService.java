@@ -8,6 +8,7 @@ import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.StudentPointAccount;
 import com.example.words.repository.StudentPointAccountRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class StudentPointQueryService {
                         students.stream().map(UserResponse::getId).toList()
                 ).stream()
                 .collect(Collectors.toMap(StudentPointAccount::getStudentId, Function.identity()));
-        Map<Long, Long> todayEarned = todayEarned(
+        Map<Long, BigDecimal> todayEarned = todayEarned(
                 students.stream().map(UserResponse::getId).toList()
         );
         return students.map(student -> {
@@ -72,7 +73,7 @@ public class StudentPointQueryService {
                     account.getAvailablePoints(),
                     account.getLifetimeEarnedPoints(),
                     account.getLifetimeSpentPoints(),
-                    todayEarned.getOrDefault(student.getId(), 0L)
+                    todayEarned.getOrDefault(student.getId(), BigDecimal.ZERO)
             );
         });
     }
@@ -115,12 +116,12 @@ public class StudentPointQueryService {
                         "Student point account does not exist"));
     }
 
-    private long todayEarned(Long studentId) {
+    private BigDecimal todayEarned(Long studentId) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
         return transactionRepository.sumEarnedByStudentIdBetween(studentId, start, start.plusDays(1));
     }
 
-    private Map<Long, Long> todayEarned(java.util.List<Long> studentIds) {
+    private Map<Long, BigDecimal> todayEarned(java.util.List<Long> studentIds) {
         if (studentIds.isEmpty()) {
             return Map.of();
         }

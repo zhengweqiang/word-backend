@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -39,17 +40,17 @@ public class StudentPointAccount {
     @Column(name = "student_id", nullable = false)
     private Long studentId;
 
-    @Column(name = "available_points", nullable = false)
-    private Integer availablePoints = 0;
+    @Column(name = "available_points", nullable = false, precision = 19, scale = 2)
+    private BigDecimal availablePoints = BigDecimal.ZERO;
 
-    @Column(name = "frozen_points", nullable = false)
-    private Integer frozenPoints = 0;
+    @Column(name = "frozen_points", nullable = false, precision = 19, scale = 2)
+    private BigDecimal frozenPoints = BigDecimal.ZERO;
 
-    @Column(name = "lifetime_earned_points", nullable = false)
-    private Integer lifetimeEarnedPoints = 0;
+    @Column(name = "lifetime_earned_points", nullable = false, precision = 19, scale = 2)
+    private BigDecimal lifetimeEarnedPoints = BigDecimal.ZERO;
 
-    @Column(name = "lifetime_spent_points", nullable = false)
-    private Integer lifetimeSpentPoints = 0;
+    @Column(name = "lifetime_spent_points", nullable = false, precision = 19, scale = 2)
+    private BigDecimal lifetimeSpentPoints = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
@@ -67,5 +68,41 @@ public class StudentPointAccount {
         StudentPointAccount account = new StudentPointAccount();
         account.setStudentId(studentId);
         return account;
+    }
+
+    public void setAvailablePoints(BigDecimal availablePoints) {
+        this.availablePoints = availablePoints;
+    }
+
+    public void setAvailablePoints(Integer availablePoints) {
+        this.availablePoints = toDecimal(availablePoints);
+    }
+
+    public void setFrozenPoints(BigDecimal frozenPoints) {
+        this.frozenPoints = frozenPoints;
+    }
+
+    public void setFrozenPoints(Integer frozenPoints) {
+        this.frozenPoints = toDecimal(frozenPoints);
+    }
+
+    public void setLifetimeEarnedPoints(BigDecimal lifetimeEarnedPoints) {
+        this.lifetimeEarnedPoints = lifetimeEarnedPoints;
+    }
+
+    public void setLifetimeEarnedPoints(Integer lifetimeEarnedPoints) {
+        this.lifetimeEarnedPoints = toDecimal(lifetimeEarnedPoints);
+    }
+
+    public void setLifetimeSpentPoints(BigDecimal lifetimeSpentPoints) {
+        this.lifetimeSpentPoints = lifetimeSpentPoints;
+    }
+
+    public void setLifetimeSpentPoints(Integer lifetimeSpentPoints) {
+        this.lifetimeSpentPoints = toDecimal(lifetimeSpentPoints);
+    }
+
+    private BigDecimal toDecimal(Integer value) {
+        return value == null ? null : BigDecimal.valueOf(value);
     }
 }

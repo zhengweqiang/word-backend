@@ -2,18 +2,19 @@ package com.example.words.dto;
 
 import com.example.words.model.PointAccountStatus;
 import com.example.words.model.StudentPointAccount;
+import java.math.BigDecimal;
 
 public record StudentPointSummaryResponse(
         Long accountId,
         Long studentId,
-        Integer availablePoints,
-        Integer frozenPoints,
-        Integer lifetimeEarnedPoints,
-        Integer lifetimeSpentPoints,
-        Long todayEarnedPoints,
+        BigDecimal availablePoints,
+        BigDecimal frozenPoints,
+        BigDecimal lifetimeEarnedPoints,
+        BigDecimal lifetimeSpentPoints,
+        BigDecimal todayEarnedPoints,
         PointAccountStatus status
 ) {
-    public static StudentPointSummaryResponse from(StudentPointAccount account, long todayEarnedPoints) {
+    public static StudentPointSummaryResponse from(StudentPointAccount account, BigDecimal todayEarnedPoints) {
         return new StudentPointSummaryResponse(
                 account.getId(),
                 account.getStudentId(),

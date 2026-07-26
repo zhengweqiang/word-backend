@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -51,8 +52,8 @@ public class StudentPointRule {
     @Column(name = "source_type", nullable = false, length = 64)
     private PointSourceType sourceType;
 
-    @Column(name = "base_points", nullable = false)
-    private Integer basePoints;
+    @Column(name = "base_points", nullable = false, precision = 19, scale = 2)
+    private BigDecimal basePoints;
 
     @Column(name = "scope_type", nullable = false, length = 32)
     private String scopeType = "GLOBAL";
@@ -75,7 +76,7 @@ public class StudentPointRule {
             String code,
             String name,
             PointSourceType sourceType,
-            Integer basePoints
+            BigDecimal basePoints
     ) {
         StudentPointRule rule = new StudentPointRule();
         rule.code = code;
@@ -83,5 +84,22 @@ public class StudentPointRule {
         rule.setSourceType(sourceType);
         rule.setBasePoints(basePoints);
         return rule;
+    }
+
+    public static StudentPointRule create(
+            String code,
+            String name,
+            PointSourceType sourceType,
+            int basePoints
+    ) {
+        return create(code, name, sourceType, BigDecimal.valueOf(basePoints));
+    }
+
+    public void setBasePoints(BigDecimal basePoints) {
+        this.basePoints = basePoints;
+    }
+
+    public void setBasePoints(Integer basePoints) {
+        this.basePoints = basePoints == null ? null : BigDecimal.valueOf(basePoints);
     }
 }

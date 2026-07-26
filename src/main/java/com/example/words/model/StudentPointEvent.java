@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -64,8 +65,8 @@ public class StudentPointEvent {
     @Column(name = "rule_name", length = 100)
     private String ruleName;
 
-    @Column(name = "points", nullable = false)
-    private Integer points;
+    @Column(name = "points", nullable = false, precision = 19, scale = 2)
+    private BigDecimal points;
 
     @Column(name = "idempotency_key", nullable = false, length = 160)
     private String idempotencyKey;
@@ -121,4 +122,12 @@ public class StudentPointEvent {
 
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
+
+    public void setPoints(BigDecimal points) {
+        this.points = points;
+    }
+
+    public void setPoints(Integer points) {
+        this.points = points == null ? null : BigDecimal.valueOf(points);
+    }
 }

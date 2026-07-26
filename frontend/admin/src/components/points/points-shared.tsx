@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronLeft, ChevronRight, LoaderCircle, X } from "lucide-solid";
+﻿import { AlertTriangle, ChevronLeft, ChevronRight, LoaderCircle, X } from "lucide-solid";
 import { createEffect, createSignal, Show } from "solid-js";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { createPointAdjustmentRequestKey } from "@/lib/point-request-key";
+import { createPointAdjustmentRequestKey, createPointRedemptionRequestKey } from "@/lib/point-request-key";
 import type { UserRole } from "@/types/api";
 
 export const PAGE_SIZE = 20;
@@ -20,7 +20,7 @@ export function PageState(props: { loading: boolean; error?: unknown; empty: boo
         <>
             <Show when={props.loading}>
                 <div class="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <LoaderCircle class="h-4 w-4 animate-spin" /> 正在加载
+                    <LoaderCircle class="h-4 w-4 animate-spin" /> 姝ｅ湪鍔犺浇
                 </div>
             </Show>
             <Show when={!props.loading && props.error}>
@@ -167,6 +167,12 @@ export interface AdjustmentTarget {
     actorRole: Extract<UserRole, "ADMIN" | "TEACHER">;
 }
 
+export interface RedemptionTarget {
+    studentId: number;
+    studentName: string;
+    availablePoints: number;
+}
+
 export function StudentPointAdjustmentDialog(props: {
     target?: AdjustmentTarget;
     onClose: () => void;
@@ -228,7 +234,7 @@ export function StudentPointAdjustmentDialog(props: {
                             </div>
                             <div class="space-y-2">
                                 <Label for="adjustment-reason">调整原因</Label>
-                                <Textarea id="adjustment-reason" maxlength={500} placeholder="必填，说明人工调整依据" value={reason()} onInput={(event) => setReason(event.currentTarget.value)} />
+                                <Textarea id="adjustment-reason" maxlength={500} placeholder="必填，请说明人工调整依据" value={reason()} onInput={(event) => setReason(event.currentTarget.value)} />
                                 <p class="text-right text-xs text-muted-foreground">{reason().length}/500</p>
                             </div>
                             <div class="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">请求标识：{requestKey()}</div>
@@ -239,6 +245,99 @@ export function StudentPointAdjustmentDialog(props: {
                             <Button disabled={!valid() || pending()} onClick={() => void submit()}>
                                 <Show when={pending()}><LoaderCircle class="h-4 w-4 animate-spin" /></Show>
                                 确认调整
+                            </Button>
+                        </div>
+                    </section>
+                </div>
+            )}
+        </Show>
+    );
+}
+
+export function StudentPointRedemptionDialog(props: {
+    target?: RedemptionTarget;
+    minimumPoints: number;
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const [points, setPoints] = createSignal("");
+    const [reason, setReason] = createSignal("");
+    const [requestKey, setRequestKey] = createSignal("");
+    const [pending, setPending] = createSignal(false);
+    const [error, setError] = createSignal("");
+
+    createEffect(() => {
+        const target = props.target;
+        if (target) {
+            setPoints("");
+            setReason("");
+            setError("");
+            setRequestKey(createPointRedemptionRequestKey(target.studentId));
+        }
+    });
+
+    const parsedPoints = () => Number(points());
+    const minimumPoints = () => Math.max(1, Math.trunc(props.minimumPoints || 1));
+    const belowMinimum = () => (
+        Number.isInteger(parsedPoints()) && parsedPoints() > 0 && parsedPoints() < minimumPoints()
+    );
+    const valid = () => (
+        Number.isInteger(parsedPoints()) && parsedPoints() >= minimumPoints() && reason().trim().length > 0
+    );
+
+    const submit = async () => {
+        const target = props.target;
+        if (!target || !valid() || pending()) return;
+        setPending(true);
+        setError("");
+        try {
+            await api.redeemAdminStudentPoints(target.studentId, {
+                requestKey: requestKey(),
+                points: parsedPoints(),
+                reason: reason().trim(),
+            });
+            props.onSuccess();
+            props.onClose();
+        } catch (requestError) {
+            setError(errorMessage(requestError));
+        } finally {
+            setPending(false);
+        }
+    };
+
+    return (
+        <Show when={props.target}>
+            {(target) => (
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="presentation">
+                    <section aria-labelledby="redemption-title" aria-modal="true" class="w-full max-w-lg rounded-lg border border-border bg-background p-6 shadow-2xl" role="dialog">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 class="text-lg font-semibold" id="redemption-title">积分兑换</h2>
+                                <p class="mt-1 text-sm text-muted-foreground">学生：{target().studentName}，可用积分 {target().availablePoints}</p>
+                            </div>
+                            <Button aria-label="关闭" size="sm" variant="ghost" onClick={props.onClose}><X class="h-4 w-4" /></Button>
+                        </div>
+                        <div class="mt-5 space-y-4">
+                            <div class="space-y-2">
+                                <Label for="redemption-points">兑换积分数</Label>
+                                <Input id="redemption-points" inputmode="numeric" min={minimumPoints()} placeholder={`最少 ${minimumPoints()} 分`} type="number" value={points()} onInput={(event) => setPoints(event.currentTarget.value)} />
+                                <Show when={belowMinimum()}>
+                                    <p class="text-xs text-destructive">兑换积分数不能小于积分兑换规则分值 {minimumPoints()}</p>
+                                </Show>
+                            </div>
+                            <div class="space-y-2">
+                                <Label for="redemption-reason">兑换原因/备注</Label>
+                                <Textarea id="redemption-reason" maxlength={500} placeholder="必填，说明兑换内容或业务依据" value={reason()} onInput={(event) => setReason(event.currentTarget.value)} />
+                                <p class="text-right text-xs text-muted-foreground">{reason().length}/500</p>
+                            </div>
+                            <div class="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">请求标识：{requestKey()}</div>
+                        </div>
+                        <Show when={error()}><Alert class="mt-4 border-destructive/30 text-destructive">{error()}</Alert></Show>
+                        <div class="mt-5 flex justify-end gap-3">
+                            <Button disabled={pending()} variant="outline" onClick={props.onClose}>取消</Button>
+                            <Button disabled={!valid() || pending()} onClick={() => void submit()}>
+                                <Show when={pending()}><LoaderCircle class="h-4 w-4 animate-spin" /></Show>
+                                确认兑换
                             </Button>
                         </div>
                     </section>

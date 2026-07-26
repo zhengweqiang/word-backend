@@ -20,6 +20,7 @@ import com.example.words.repository.StudentPointAdjustmentRequestRepository;
 import com.example.words.repository.StudentPointEventAttemptRepository;
 import com.example.words.repository.StudentPointEventRepository;
 import com.example.words.repository.StudentPointTransactionRepository;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -123,7 +124,7 @@ class StudentPointAdjustmentIdempotencyIntegrationTest {
         assertEquals(1, eventRepository.count());
         assertEquals(1, attemptRepository.count());
         assertEquals(1, pointTransactionRepository.count());
-        assertEquals(9, accountRepository.findByStudentId(student.getId()).orElseThrow().getAvailablePoints());
+        assertEquals(new BigDecimal("9.00"), accountRepository.findByStudentId(student.getId()).orElseThrow().getAvailablePoints());
     }
 
     @Test
@@ -190,7 +191,7 @@ class StudentPointAdjustmentIdempotencyIntegrationTest {
         assertEquals(1, eventRepository.count());
         assertEquals(1, attemptRepository.count());
         assertEquals(1, pointTransactionRepository.count());
-        assertEquals(11, accountRepository.findByStudentId(student.getId()).orElseThrow().getAvailablePoints());
+        assertEquals(new BigDecimal("11.00"), accountRepository.findByStudentId(student.getId()).orElseThrow().getAvailablePoints());
     }
 
     @Test
@@ -223,7 +224,7 @@ class StudentPointAdjustmentIdempotencyIntegrationTest {
         assertEquals(2, eventRepository.count());
         assertEquals(1, attemptRepository.count());
         assertEquals(1, pointTransactionRepository.count());
-        assertEquals(8, accountRepository.findByStudentId(student.getId()).orElseThrow().getAvailablePoints());
+        assertEquals(new BigDecimal("8.00"), accountRepository.findByStudentId(student.getId()).orElseThrow().getAvailablePoints());
     }
 
     private StudentPointAdjustmentService.AdjustmentCommand command(

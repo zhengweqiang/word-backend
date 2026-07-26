@@ -3,6 +3,7 @@ package com.example.words.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,9 +11,14 @@ import com.example.words.exception.StudentPointOperationException;
 import com.example.words.model.AppUser;
 import com.example.words.model.PointAttemptTriggerType;
 import com.example.words.model.PointEventStatus;
+import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointEvent;
+import com.example.words.model.StudentPointRule;
 import com.example.words.model.StudentPointTransaction;
 import com.example.words.model.UserRole;
+import com.example.words.repository.AppUserRepository;
+import com.example.words.repository.StudentPointRuleRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,11 +38,18 @@ class StudentPointAdminServiceTest {
     @Mock
     private StudentPointLedgerService ledgerService;
 
+    @Mock
+    private AppUserRepository userRepository;
+
+    @Mock
+    private StudentPointRuleRepository ruleRepository;
+
     private StudentPointAdminService service;
 
     @BeforeEach
     void setUp() {
-        service = new StudentPointAdminService(processor, adminTransaction, ledgerService);
+        service = new StudentPointAdminService(
+                processor, adminTransaction, ledgerService, userRepository, ruleRepository);
     }
 
     @Test
@@ -108,6 +121,46 @@ class StudentPointAdminServiceTest {
     }
 
     @Test
+    void redeemPointsPostsRedemptionDeductionForStudent() {
+        AppUser admin = actor(9L, UserRole.ADMIN);
+        AppUser student = actor(42L, UserRole.STUDENT);
+        StudentPointTransaction redemption = new StudentPointTransaction();
+        redemption.setId(88L);
+        when(userRepository.findById(42L)).thenReturn(Optional.of(student));
+        when(ruleRepository.findByCode("REDEMPTION")).thenReturn(Optional.of(redemptionRule(5)));
+        when(ledgerService.post(any())).thenReturn(redemption);
+
+        assertEquals(redemption, service.redeemPoints(admin, 42L, " redeem-key ", 8, " prize redemption "));
+
+        ArgumentCaptor<StudentPointLedgerService.PostRequest> request =
+                ArgumentCaptor.forClass(StudentPointLedgerService.PostRequest.class);
+        verify(ledgerService).post(request.capture());
+        assertEquals(42L, request.getValue().studentId());
+        assertEquals(-8, request.getValue().amount());
+        assertEquals(PointSourceType.REDEMPTION, request.getValue().sourceType());
+        assertEquals("redemption:redeem-key", request.getValue().sourceKey());
+        assertEquals("REDEMPTION", request.getValue().ruleCode());
+        assertEquals("redemption:redeem-key", request.getValue().idempotencyKey());
+        assertEquals(9L, request.getValue().actor().operatorId());
+        assertEquals("ADMIN", request.getValue().actor().operatorRole());
+        assertEquals("prize redemption", request.getValue().reason());
+    }
+
+    @Test
+    void redeemPointsMustMeetRedemptionRuleBasePoints() {
+        AppUser admin = actor(9L, UserRole.ADMIN);
+        AppUser student = actor(42L, UserRole.STUDENT);
+        when(userRepository.findById(42L)).thenReturn(Optional.of(student));
+        when(ruleRepository.findByCode("REDEMPTION")).thenReturn(Optional.of(redemptionRule(20)));
+
+        StudentPointOperationException failure = assertCode("POINT_REDEMPTION_POINTS_BELOW_RULE", () ->
+                service.redeemPoints(admin, 42L, "redeem-key", 19, "prize"));
+        assertEquals("兑换积分数不能小于积分兑换规则基础分值", failure.getMessage());
+
+        verify(ledgerService, never()).post(any());
+    }
+
+    @Test
     void nonAdminIsForbiddenForAllOperations() {
         AppUser teacher = actor(7L, UserRole.TEACHER);
         assertCode("POINT_ADMIN_REQUIRED", () -> service.retryEvent(teacher, 1L, "重试"));
@@ -129,8 +182,13 @@ class StudentPointAdminServiceTest {
         return actor;
     }
 
-    private void assertCode(String code, Runnable operation) {
+    private StudentPointRule redemptionRule(int basePoints) {
+        return StudentPointRule.create("REDEMPTION", "redemption", PointSourceType.REDEMPTION, basePoints);
+    }
+
+    private StudentPointOperationException assertCode(String code, Runnable operation) {
         StudentPointOperationException failure = assertThrows(StudentPointOperationException.class, operation::run);
         assertEquals(code, failure.getCode());
+        return failure;
     }
 }

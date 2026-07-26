@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -54,20 +55,20 @@ public class StudentPointTransaction {
     @Column(name = "transaction_type", nullable = false, length = 32)
     private PointTransactionType transactionType;
 
-    @Column(name = "amount", nullable = false)
-    private Integer amount;
+    @Column(name = "amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal amount;
 
-    @Column(name = "balance_before", nullable = false)
-    private Integer balanceBefore;
+    @Column(name = "balance_before", nullable = false, precision = 19, scale = 2)
+    private BigDecimal balanceBefore;
 
-    @Column(name = "balance_after", nullable = false)
-    private Integer balanceAfter;
+    @Column(name = "balance_after", nullable = false, precision = 19, scale = 2)
+    private BigDecimal balanceAfter;
 
-    @Column(name = "frozen_before", nullable = false)
-    private Integer frozenBefore = 0;
+    @Column(name = "frozen_before", nullable = false, precision = 19, scale = 2)
+    private BigDecimal frozenBefore = BigDecimal.ZERO;
 
-    @Column(name = "frozen_after", nullable = false)
-    private Integer frozenAfter = 0;
+    @Column(name = "frozen_after", nullable = false, precision = 19, scale = 2)
+    private BigDecimal frozenAfter = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false, length = 64)
@@ -100,4 +101,48 @@ public class StudentPointTransaction {
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public void setAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
+    public void setAmount(Integer amount) {
+        this.amount = toDecimal(amount);
+    }
+
+    public void setBalanceBefore(BigDecimal balanceBefore) {
+        this.balanceBefore = balanceBefore;
+    }
+
+    public void setBalanceBefore(Integer balanceBefore) {
+        this.balanceBefore = toDecimal(balanceBefore);
+    }
+
+    public void setBalanceAfter(BigDecimal balanceAfter) {
+        this.balanceAfter = balanceAfter;
+    }
+
+    public void setBalanceAfter(Integer balanceAfter) {
+        this.balanceAfter = toDecimal(balanceAfter);
+    }
+
+    public void setFrozenBefore(BigDecimal frozenBefore) {
+        this.frozenBefore = frozenBefore;
+    }
+
+    public void setFrozenBefore(Integer frozenBefore) {
+        this.frozenBefore = toDecimal(frozenBefore);
+    }
+
+    public void setFrozenAfter(BigDecimal frozenAfter) {
+        this.frozenAfter = frozenAfter;
+    }
+
+    public void setFrozenAfter(Integer frozenAfter) {
+        this.frozenAfter = toDecimal(frozenAfter);
+    }
+
+    private BigDecimal toDecimal(Integer value) {
+        return value == null ? null : BigDecimal.valueOf(value);
+    }
 }

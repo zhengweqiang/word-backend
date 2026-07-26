@@ -31,6 +31,7 @@ import type {
     StudentPointAdjustmentPayload,
     StudentPointEventAttemptResponse,
     StudentPointEventResponse,
+    StudentPointRedemptionPayload,
     StudentPointRuleCreatePayload,
     StudentPointRuleResponse,
     StudentPointRuleUpdatePayload,
@@ -203,6 +204,11 @@ export const api = {
         }),
     adjustAdminStudentPoints: (studentId: number, payload: StudentPointAdjustmentPayload) =>
         request<StudentPointAdjustmentOutcome>(`/api/admin/points/students/${studentId}/adjustments`, {
+            method: "POST",
+            body: payload,
+        }),
+    redeemAdminStudentPoints: (studentId: number, payload: StudentPointRedemptionPayload) =>
+        request<StudentPointTransactionResponse>(`/api/admin/points/students/${studentId}/redemptions`, {
             method: "POST",
             body: payload,
         }),

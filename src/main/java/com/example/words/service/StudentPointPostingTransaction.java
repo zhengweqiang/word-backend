@@ -36,9 +36,9 @@ public class StudentPointPostingTransaction {
         LocalDateTime finished = LocalDateTime.ofInstant(finishedAt, clock.getZone());
         StudentPointEvent event = eventRepository.findByIdForUpdate(eventId)
                 .orElseThrow(() -> error("POINT_EVENT_NOT_FOUND", HttpStatus.NOT_FOUND,
-                        "积分事件不存在: " + eventId));
+                        "Point event does not exist: " + eventId));
         if (event.getStatus() != PointEventStatus.PROCESSING) {
-            throw error("POINT_EVENT_NOT_PROCESSING", HttpStatus.CONFLICT, "积分事件不在处理状态");
+            throw error("POINT_EVENT_NOT_PROCESSING", HttpStatus.CONFLICT, "Point event is not processing");
         }
 
         StudentPointTransaction transaction = ledgerService.post(new StudentPointLedgerService.PostRequest(
@@ -113,7 +113,7 @@ public class StudentPointPostingTransaction {
         return error(
                 "MANUAL_ADJUSTMENT_STATE_INVALID",
                 HttpStatus.CONFLICT,
-                "手工积分调整单与积分事件不一致"
+                "Manual point adjustment request does not match its point event"
         );
     }
 

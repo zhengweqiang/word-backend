@@ -3,6 +3,7 @@ package com.example.words.dto;
 import com.example.words.model.PointEventStatus;
 import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointEvent;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record StudentPointEventResponse(
@@ -15,7 +16,7 @@ public record StudentPointEventResponse(
         String sourceKey,
         String ruleCode,
         String ruleName,
-        Integer points,
+        BigDecimal points,
         PointEventStatus status,
         Integer autoAttemptCount,
         LocalDateTime nextRetryAt,

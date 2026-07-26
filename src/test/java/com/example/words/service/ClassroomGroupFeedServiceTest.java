@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.words.dto.ClassroomGroupFeedMessageResponse;
+import com.example.words.dto.CreateClassroomGroupFeedTextMessageRequest;
 import com.example.words.dto.ShareClassroomGroupFeedVideoRequest;
 import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
@@ -259,6 +260,35 @@ class ClassroomGroupFeedServiceTest {
                 30L,
                 "classroom-video:100:30:student:20:completed",
                 "VIDEO_WATCH"
+        ));
+    }
+
+    @Test
+    void studentTextMessagePublishesClassroomChatContributionPointEvent() {
+        AppUser student = user(20L, "Student", UserRole.STUDENT);
+        Classroom classroom = classroom(100L, 7L);
+
+        when(classroomRepository.findById(100L)).thenReturn(Optional.of(classroom));
+        when(classroomMemberRepository.existsByClassroomIdAndStudentId(100L, 20L)).thenReturn(true);
+        when(classroomGroupFeedMessageRepository.save(any(ClassroomGroupFeedMessage.class)))
+                .thenAnswer(invocation -> {
+                    ClassroomGroupFeedMessage message = invocation.getArgument(0);
+                    message.setId(501L);
+                    return message;
+                });
+        when(appUserRepository.findAllById(List.of(20L))).thenReturn(List.of(student));
+
+        service.createTextMessage(
+                100L,
+                new CreateClassroomGroupFeedTextMessageRequest("Hello class"),
+                student
+        );
+
+        verify(studentPointEventPublisher).publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                20L,
+                501L,
+                "classroom-chat:100:message:501:student:20",
+                "CLASSROOM_CHAT_CONTRIBUTION"
         ));
     }
 
