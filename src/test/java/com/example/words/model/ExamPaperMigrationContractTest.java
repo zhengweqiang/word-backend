@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 class ExamPaperMigrationContractTest {
 
     private static final String MIGRATION_PATH = "db/migration/V39__create_exam_paper_management.sql";
+    private static final String SOFT_REMOVAL_MIGRATION_PATH =
+            "db/migration/V39_2__soft_remove_paper_template_questions.sql";
 
     @Test
     void v39BindsEachAnswerAttemptAndQuestionToTheSameReleaseWithRestrictiveForeignKeys() throws Exception {
@@ -45,8 +47,28 @@ class ExamPaperMigrationContractTest {
         assertHasUniqueConstraint(PaperReleaseQuestion.class, "id", "paper_release_id");
     }
 
+    @Test
+    void v39TwoAddsSoftRemovalWithoutWeakeningHistoricalReferences() throws Exception {
+        String migration = readMigration(SOFT_REMOVAL_MIGRATION_PATH);
+        String normalized = migration.replaceAll("\\s+", " ").toUpperCase();
+
+        assertTrue(normalized.contains("ADD COLUMN REMOVED_AT TIMESTAMP"));
+        assertTrue(normalized.contains("REMOVED_AT IS NULL AND QUESTION_ORDER > 0"));
+        assertTrue(normalized.contains("REMOVED_AT IS NOT NULL AND QUESTION_ORDER < 0"));
+        assertFalse(normalized.contains("DROP CONSTRAINT FK_PAPER_RELEASE_QUESTIONS_TEMPLATE_QUESTION"));
+
+        Field removedAt = PaperTemplateQuestion.class.getDeclaredField("removedAt");
+        Column column = removedAt.getAnnotation(Column.class);
+        assertNotNull(column);
+        assertEquals("removed_at", column.name());
+    }
+
     private String readMigration() throws IOException {
-        try (InputStream input = getClass().getClassLoader().getResourceAsStream(MIGRATION_PATH)) {
+        return readMigration(MIGRATION_PATH);
+    }
+
+    private String readMigration(String migrationPath) throws IOException {
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(migrationPath)) {
             assertNotNull(input, "migration must be available on the test classpath");
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }

@@ -20,6 +20,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class ExamPaperPostgresMigrationIntegrationTest {
 
     private static final String MIGRATION_PATH = "db/migration/V39__create_exam_paper_management.sql";
+    private static final String SOFT_REMOVAL_MIGRATION_PATH =
+            "db/migration/V39_2__soft_remove_paper_template_questions.sql";
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
@@ -33,6 +35,52 @@ class ExamPaperPostgresMigrationIntegrationTest {
             statement.execute("CREATE TABLE classrooms (id BIGINT PRIMARY KEY)");
             statement.execute("INSERT INTO users (id) VALUES (1), (2)");
             ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION_PATH));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource(SOFT_REMOVAL_MIGRATION_PATH));
+        }
+    }
+
+    @Test
+    void referencedTemplateQuestionCanBeSoftRemovedWithoutBreakingReleaseReference() throws SQLException {
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            executeUpdate(connection, "INSERT INTO paper_templates (id, title, owner_user_id) "
+                    + "VALUES (30, 'Soft removal', 1)");
+            executeUpdate(connection, """
+                    INSERT INTO paper_template_questions (
+                        id, paper_template_id, question_order, question_type,
+                        stem, accepted_answers_json, score
+                    ) VALUES (130, 30, 1, 'FILL_IN_BLANK', 'Template question', '["answer"]', 1.00)
+                    """);
+            executeUpdate(connection, """
+                    INSERT INTO paper_releases (
+                        id, paper_template_id, title, published_by_user_id
+                    ) VALUES (30, 30, 'Release', 1)
+                    """);
+            executeUpdate(connection, """
+                    INSERT INTO paper_release_questions (
+                        id, paper_release_id, paper_template_question_id, question_order,
+                        question_type, stem, accepted_answers_json, score
+                    ) VALUES (230, 30, 130, 1, 'FILL_IN_BLANK', 'Frozen', '["answer"]', 1.00)
+                    """);
+
+            executeUpdate(connection, """
+                    UPDATE paper_template_questions
+                    SET removed_at = CURRENT_TIMESTAMP, question_order = -1
+                    WHERE id = 130
+                    """);
+
+            try (var active = statement.executeQuery("""
+                    SELECT COUNT(*) FROM paper_template_questions
+                    WHERE paper_template_id = 30 AND removed_at IS NULL
+                    """)) {
+                active.next();
+                assertEquals(0, active.getInt(1));
+            }
+            try (var reference = statement.executeQuery("""
+                    SELECT paper_template_question_id FROM paper_release_questions WHERE id = 230
+                    """)) {
+                reference.next();
+                assertEquals(130L, reference.getLong(1));
+            }
         }
     }
 

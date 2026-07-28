@@ -146,7 +146,9 @@ public class PaperTemplateService {
         PaperTemplate source = findPaper(paperId);
         ensureCanViewOrCopy(source, actor);
         String requestedTitle = request == null ? null : request.getTitle();
-        String title = requestedTitle == null ? source.getTitle() + " (Copy)" : requireTitle(requestedTitle);
+        String title = requestedTitle == null
+                ? generatedCopyTitle(source.getTitle())
+                : requireTitle(requestedTitle);
 
         PaperTemplate copy = new PaperTemplate();
         copy.setTitle(title);
@@ -190,9 +192,9 @@ public class PaperTemplateService {
                 .orElse(0) + 1;
         PaperTemplateQuestion snapshot = snapshotService.createTemplateQuestionSnapshot(
                 source, paperId, nextOrder, score);
-        paperQuestionRepository.saveAndFlush(snapshot);
         questions.add(snapshot);
         recalculateTotal(paper, questions);
+        paperQuestionRepository.saveAndFlush(snapshot);
         paperRepository.saveAndFlush(paper);
         return toResponse(paper, questions);
     }
@@ -224,9 +226,9 @@ public class PaperTemplateService {
         validateScore(request.getScore());
         PaperTemplateQuestion question = findPaperQuestion(paperId, paperQuestionId);
         question.setScore(request.getScore());
-        paperQuestionRepository.saveAndFlush(question);
         List<PaperTemplateQuestion> questions = loadQuestions(paperId);
         recalculateTotal(paper, questions);
+        paperQuestionRepository.saveAndFlush(question);
         paperRepository.saveAndFlush(paper);
         return toResponse(paper, questions);
     }
@@ -237,8 +239,11 @@ public class PaperTemplateService {
         PaperTemplateQuestion question = findPaperQuestion(paperId, paperQuestionId);
         List<PaperTemplateQuestion> questions = new ArrayList<>(loadQuestions(paperId));
         questions.removeIf(candidate -> candidate.getId().equals(question.getId()));
-        paperQuestionRepository.delete(question);
-        paperQuestionRepository.flush();
+        Integer minimumOrder = paperQuestionRepository.findMinimumQuestionOrder(paperId);
+        int removedOrder = minimumOrder != null && minimumOrder < 0 ? minimumOrder - 1 : -1;
+        question.setQuestionOrder(removedOrder);
+        question.setRemovedAt(LocalDateTime.now(clock));
+        paperQuestionRepository.saveAndFlush(question);
         if (!questions.isEmpty()) {
             persistContiguousOrder(questions);
         }
@@ -250,9 +255,7 @@ public class PaperTemplateService {
     @Transactional
     public void archive(Long paperId, AppUser actor) {
         PaperTemplate paper = findPaper(paperId);
-        if (!isAdmin(actor)) {
-            accessService.ensureCanManagePaper(actor, paper);
-        }
+        accessService.ensureCanManagePaper(actor, paper);
         if (paper.getStatus() == PaperTemplateStatus.ARCHIVED) {
             return;
         }
@@ -262,7 +265,7 @@ public class PaperTemplateService {
     }
 
     private PaperTemplate editablePaper(Long paperId, AppUser actor) {
-        PaperTemplate paper = findPaper(paperId);
+        PaperTemplate paper = findPaperForUpdate(paperId);
         accessService.ensureCanManagePaper(actor, paper);
         ensureEditable(paper);
         return paper;
@@ -276,11 +279,19 @@ public class PaperTemplateService {
                 .orElseThrow(() -> new ResourceNotFoundException("Paper not found: " + paperId));
     }
 
+    private PaperTemplate findPaperForUpdate(Long paperId) {
+        if (paperId == null) {
+            throw new BadRequestException("Paper ID is required");
+        }
+        return paperRepository.findByIdForUpdate(paperId)
+                .orElseThrow(() -> new ResourceNotFoundException("Paper not found: " + paperId));
+    }
+
     private PaperTemplateQuestion findPaperQuestion(Long paperId, Long paperQuestionId) {
         if (paperQuestionId == null) {
             throw new BadRequestException("Paper question ID is required");
         }
-        PaperTemplateQuestion question = paperQuestionRepository.findById(paperQuestionId)
+        PaperTemplateQuestion question = paperQuestionRepository.findByIdAndRemovedAtIsNull(paperQuestionId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Paper question not found: " + paperQuestionId));
         if (!paperId.equals(question.getPaperTemplateId())) {
@@ -290,7 +301,8 @@ public class PaperTemplateService {
     }
 
     private List<PaperTemplateQuestion> loadQuestions(Long paperId) {
-        return paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(paperId);
+        return paperQuestionRepository
+                .findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(paperId);
     }
 
     private void ensureCanViewOrCopy(PaperTemplate paper, AppUser actor) {
@@ -362,6 +374,9 @@ public class PaperTemplateService {
         BigDecimal total = zeroScore();
         for (PaperTemplateQuestion question : questions) {
             total = total.add(question.getScore());
+        }
+        if (total.scale() > 2 || total.compareTo(MAX_SCORE) > 0) {
+            throw new BadRequestException("Paper total score must fit NUMERIC(19,2)");
         }
         paper.setTotalScore(total);
     }
@@ -475,6 +490,16 @@ public class PaperTemplateService {
             throw new BadRequestException("Paper title must not exceed 200 characters");
         }
         return normalized;
+    }
+
+    private String generatedCopyTitle(String sourceTitle) {
+        String normalizedSource = requireTitle(sourceTitle);
+        String suffix = " (Copy)";
+        int sourceLimit = 200 - suffix.length();
+        String boundedSource = normalizedSource.length() > sourceLimit
+                ? normalizedSource.substring(0, sourceLimit)
+                : normalizedSource;
+        return requireTitle(boundedSource + suffix);
     }
 
     private Boolean requireBoolean(Boolean value, String fieldName) {

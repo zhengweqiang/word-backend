@@ -39,7 +39,7 @@ public class ExamPaperAccessService {
     }
 
     public void ensureCanManagePaper(AppUser actor, PaperTemplate paper) {
-        if (isTeacher(actor) && actor.getId().equals(paper.getOwnerUserId())) {
+        if ((isAdmin(actor) || isTeacher(actor)) && actor.getId().equals(paper.getOwnerUserId())) {
             return;
         }
         throw denied("manage this paper");
@@ -64,7 +64,8 @@ public class ExamPaperAccessService {
 
     public void ensureCanReviewRelease(AppUser actor, PaperRelease release, Long studentId) {
         if (isAdmin(actor) || (isTeacher(actor) && actor.getId().equals(release.getPublishedByUserId()))
-                || (isTeacher(actor) && teacherStudentService.isTeacherResponsibleForStudent(actor.getId(), studentId))) {
+                || (isTeacher(actor)
+                && teacherStudentService.isTeacherResponsibleForStudent(actor.getId(), studentId))) {
             return;
         }
         throw denied("review this release");

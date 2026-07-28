@@ -79,4 +79,7 @@ public class PaperTemplateQuestion {
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "removed_at")
+    private LocalDateTime removedAt;
 }

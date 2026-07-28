@@ -74,13 +74,16 @@ class ExamPaperAccessServiceTest {
     }
 
     @Test
-    void onlyOwningTeacherCanManagePaper() {
+    void onlyOwningStaffMemberCanManagePaper() {
         PaperTemplate paper = new PaperTemplate();
         paper.setOwnerUserId(7L);
 
         assertDoesNotThrow(() -> accessService.ensureCanManagePaper(user(7L, UserRole.TEACHER), paper));
+        assertDoesNotThrow(() -> accessService.ensureCanManagePaper(user(7L, UserRole.ADMIN), paper));
         assertThrows(AccessDeniedException.class,
                 () -> accessService.ensureCanManagePaper(user(1L, UserRole.ADMIN), paper));
+        assertThrows(AccessDeniedException.class,
+                () -> accessService.ensureCanManagePaper(user(8L, UserRole.TEACHER), paper));
     }
 
     @Test

@@ -125,9 +125,9 @@ class PaperTemplateServiceTest {
     void addingActiveQuestionCreatesIndependentSnapshotAndRecalculatesTotal() {
         PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.DRAFT);
         QuestionBankItem source = question(50L, QuestionBankItemStatus.ACTIVE, "Original stem", "2.50");
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
         when(questionBankService.findQuestionForPaper(50L)).thenReturn(source);
-        when(paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(10L))
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
                 .thenReturn(new ArrayList<>());
 
         PaperTemplateResponse response = service.addQuestion(
@@ -145,7 +145,7 @@ class PaperTemplateServiceTest {
     @Test
     void addingArchivedQuestionIsRejected() {
         PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.DRAFT);
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
         when(questionBankService.findQuestionForPaper(50L))
                 .thenReturn(question(50L, QuestionBankItemStatus.ARCHIVED, "Old", "1.00"));
         assertThrows(AccessDeniedException.class, () -> service.addQuestion(
@@ -160,8 +160,9 @@ class PaperTemplateServiceTest {
                 paperQuestion(101L, 10L, 1, "First", "1.00"),
                 paperQuestion(102L, 10L, 2, "Second", "2.00"),
                 paperQuestion(103L, 10L, 3, "Third", "3.00")));
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
-        when(paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(10L)).thenReturn(questions);
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(questions);
 
         PaperTemplateResponse response = service.reorderQuestions(
                 10L, new ReorderPaperQuestionsRequest(List.of(103L, 101L, 102L)), teacher(7L));
@@ -180,9 +181,11 @@ class PaperTemplateServiceTest {
         List<PaperTemplateQuestion> questions = new ArrayList<>(List.of(
                 paperQuestion(101L, 10L, 1, "First", "1.00"),
                 paperQuestion(102L, 10L, 2, "Second", "2.00")));
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
-        when(paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(10L)).thenReturn(questions);
-        when(paperQuestionRepository.findById(102L)).thenReturn(Optional.of(questions.get(1)));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(questions);
+        when(paperQuestionRepository.findByIdAndRemovedAtIsNull(102L))
+                .thenReturn(Optional.of(questions.get(1)));
 
         PaperTemplateResponse response = service.updateQuestionScore(
                 10L, 102L, new UpdatePaperQuestionScoreRequest(new BigDecimal("4.75")), teacher(7L));
@@ -198,7 +201,8 @@ class PaperTemplateServiceTest {
                 paperQuestion(101L, 10L, 1, "Frozen first", "1.00"),
                 paperQuestion(102L, 10L, 2, "Frozen second", "2.00"));
         when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
-        when(paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(10L)).thenReturn(questions);
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(questions);
 
         PaperTemplateResponse response = service.preview(10L, teacher(8L));
 
@@ -213,7 +217,7 @@ class PaperTemplateServiceTest {
                 paperQuestion(101L, 10L, 1, "First", "1.25"),
                 paperQuestion(102L, 10L, 2, "Second", "2.75"));
         when(paperRepository.findById(10L)).thenReturn(Optional.of(source));
-        when(paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(10L))
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
                 .thenReturn(sourceQuestions);
 
         PaperTemplateResponse response = service.copy(
@@ -226,6 +230,19 @@ class PaperTemplateServiceTest {
         assertEquals(new BigDecimal("4.00"), response.getTotalScore());
         assertNotEquals(101L, response.getQuestions().get(0).getId());
         assertEquals("First", response.getQuestions().get(0).getStem());
+    }
+
+    @Test
+    void generatedCopyTitleNeverExceedsDatabaseLimit() {
+        PaperTemplate source = paper(10L, 8L, PaperTemplateStatus.READY);
+        source.setTitle("x".repeat(200));
+        when(paperRepository.findById(10L)).thenReturn(Optional.of(source));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(List.of());
+
+        PaperTemplateResponse response = service.copy(10L, null, teacher(7L));
+
+        assertEquals(200, response.getTitle().length());
     }
 
     @Test
@@ -255,23 +272,62 @@ class PaperTemplateServiceTest {
     }
 
     @Test
+    void adminCanManageOnlyPapersOwnedBySameAdmin() {
+        AppUser admin = user(1L, UserRole.ADMIN);
+        PaperTemplate own = paper(10L, 1L, PaperTemplateStatus.DRAFT);
+        when(paperRepository.findById(10L)).thenReturn(Optional.of(own));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(List.of());
+
+        PaperTemplateResponse updated = service.update(10L, updateRequest("Admin paper"), admin);
+        service.archive(10L, admin);
+
+        assertEquals("Admin paper", updated.getTitle());
+        assertEquals(PaperTemplateStatus.ARCHIVED, own.getStatus());
+
+        PaperTemplate other = paper(11L, 2L, PaperTemplateStatus.DRAFT);
+        when(paperRepository.findById(11L)).thenReturn(Optional.of(other));
+        assertThrows(AccessDeniedException.class, () -> service.update(
+                11L, updateRequest("Forbidden"), admin));
+    }
+
+    @Test
+    void aggregateTotalMustFitNumericNineteenTwo() {
+        PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.DRAFT);
+        PaperTemplateQuestion existing = paperQuestion(
+                101L, 10L, 1, "Max", "99999999999999999.99");
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+        when(questionBankService.findQuestionForPaper(50L))
+                .thenReturn(question(50L, QuestionBankItemStatus.ACTIVE, "Overflow", "0.01"));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(new ArrayList<>(List.of(existing)));
+
+        assertThrows(BadRequestException.class, () -> service.addQuestion(
+                10L, new AddPaperQuestionRequest(50L, new BigDecimal("0.01")), teacher(7L)));
+        verify(paperRepository, never()).saveAndFlush(paper);
+    }
+
+    @Test
     void removeQuestionCompactsOrderAndRecalculatesTotal() {
         PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.DRAFT);
         List<PaperTemplateQuestion> questions = new ArrayList<>(List.of(
                 paperQuestion(101L, 10L, 1, "First", "1.00"),
                 paperQuestion(102L, 10L, 2, "Second", "2.00"),
                 paperQuestion(103L, 10L, 3, "Third", "3.00")));
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
-        when(paperQuestionRepository.findById(102L)).thenReturn(Optional.of(questions.get(1)));
-        when(paperQuestionRepository.findByPaperTemplateIdOrderByQuestionOrderAsc(10L))
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+        when(paperQuestionRepository.findByIdAndRemovedAtIsNull(102L)).thenReturn(Optional.of(questions.get(1)));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
                 .thenReturn(questions);
+        when(paperQuestionRepository.findMinimumQuestionOrder(10L)).thenReturn(1);
 
         PaperTemplateResponse response = service.removeQuestion(10L, 102L, teacher(7L));
 
         assertEquals(List.of(1, 2), response.getQuestions().stream()
                 .map(question -> question.getQuestionOrder()).toList());
         assertEquals(new BigDecimal("4.00"), response.getTotalScore());
-        verify(paperQuestionRepository).delete(questions.get(1));
+        assertEquals(NOW, questions.get(1).getRemovedAt());
+        assertEquals(-1, questions.get(1).getQuestionOrder());
+        verify(paperQuestionRepository, never()).delete(any());
     }
 
     private CreatePaperTemplateRequest createRequest(String title) {
@@ -283,9 +339,13 @@ class PaperTemplateServiceTest {
     }
 
     private AppUser teacher(Long id) {
+        return user(id, UserRole.TEACHER);
+    }
+
+    private AppUser user(Long id, UserRole role) {
         AppUser user = new AppUser();
         user.setId(id);
-        user.setRole(UserRole.TEACHER);
+        user.setRole(role);
         return user;
     }
 
