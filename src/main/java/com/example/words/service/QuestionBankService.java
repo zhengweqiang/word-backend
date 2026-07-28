@@ -1,5 +1,28 @@
 package com.example.words.service;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.example.words.dto.CopyQuestionRequest;
 import com.example.words.dto.CreateQuestionRequest;
 import com.example.words.dto.QuestionBankItemResponse;
@@ -16,27 +39,6 @@ import com.example.words.repository.DictionaryRepository;
 import com.example.words.repository.DictionaryWordRepository;
 import com.example.words.repository.MetaWordRepository;
 import com.example.words.repository.QuestionBankItemRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuestionBankService {
@@ -97,7 +99,7 @@ public class QuestionBankService {
         QuestionBankItem question = new QuestionBankItem();
         apply(question, normalized, status, actor.getId());
         question.setCreatedByUserId(actor.getId());
-        return toResponse(questionRepository.save(question));
+        return toResponse(questionRepository.saveAndFlush(question));
     }
 
     @Transactional
@@ -126,7 +128,7 @@ public class QuestionBankService {
                 request.getDictionaryId(),
                 request.getMetaWordId());
         apply(question, normalized, request.getStatus(), actor.getId());
-        return toResponse(questionRepository.save(question));
+        return toResponse(questionRepository.saveAndFlush(question));
     }
 
     @Transactional
@@ -136,8 +138,6 @@ public class QuestionBankService {
         accessService.ensureCanUseQuestion(actor, source);
 
         CopyQuestionRequest resolvedRequest = request == null ? new CopyQuestionRequest() : request;
-        QuestionBankItemStatus status = defaultStatus(resolvedRequest.getStatus());
-        ensureWritableStatus(status);
         String stem = resolvedRequest.getStem() == null ? source.getStem() : resolvedRequest.getStem();
 
         NormalizedQuestion normalized = normalizeAndValidate(
@@ -153,12 +153,12 @@ public class QuestionBankService {
                 source.getMetaWordId());
 
         QuestionBankItem copied = new QuestionBankItem();
-        apply(copied, normalized, status, actor.getId());
+        apply(copied, normalized, QuestionBankItemStatus.DRAFT, actor.getId());
         copied.setSourceQuestionId(source.getId());
         copied.setCreatedByUserId(actor.getId());
         copied.setImportedByUserId(null);
         copied.setImportBatchId(null);
-        return toResponse(questionRepository.save(copied));
+        return toResponse(questionRepository.saveAndFlush(copied));
     }
 
     @Transactional
@@ -213,6 +213,11 @@ public class QuestionBankService {
         }
         if (defaultScore == null || defaultScore.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Question score must be positive");
+        }
+        int integerDigits = Math.max(defaultScore.precision() - defaultScore.scale(), 0);
+        int fractionDigits = Math.max(defaultScore.scale(), 0);
+        if (integerDigits > 17 || fractionDigits > 2) {
+            throw new BadRequestException("Question score must fit NUMERIC(19,2)");
         }
 
         Map<String, String> normalizedOptions = normalizeOptions(options);

@@ -1,18 +1,22 @@
 package com.example.words.dto;
 
-import com.example.words.model.QuestionBankItemStatus;
-import com.example.words.model.QuestionType;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import com.example.words.model.QuestionBankItemStatus;
+import com.example.words.model.QuestionType;
 
 @Data
 @NoArgsConstructor
@@ -33,6 +37,7 @@ public class UpdateQuestionRequest {
 
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
+    @Digits(integer = 17, fraction = 2)
     private BigDecimal defaultScore;
 
     private Integer difficulty;

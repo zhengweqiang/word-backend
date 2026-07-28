@@ -1,18 +1,33 @@
 package com.example.words.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockingDetails;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Root;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.example.words.dto.CopyQuestionRequest;
 import com.example.words.dto.CreateQuestionRequest;
@@ -30,34 +45,25 @@ import com.example.words.repository.DictionaryRepository;
 import com.example.words.repository.DictionaryWordRepository;
 import com.example.words.repository.MetaWordRepository;
 import com.example.words.repository.QuestionBankItemRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Root;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.access.AccessDeniedException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class QuestionBankServiceTest {
+
+    private static final LocalDateTime FLUSHED_AT = LocalDateTime.of(2026, 7, 28, 12, 0);
 
     @Mock
     private QuestionBankItemRepository questionRepository;
@@ -94,6 +100,17 @@ class QuestionBankServiceTest {
             }
             return question;
         });
+        lenient().when(questionRepository.saveAndFlush(any(QuestionBankItem.class))).thenAnswer(invocation -> {
+            QuestionBankItem question = invocation.getArgument(0);
+            if (question.getId() == null) {
+                question.setId(100L);
+            }
+            if (question.getCreatedAt() == null) {
+                question.setCreatedAt(FLUSHED_AT);
+            }
+            question.setUpdatedAt(FLUSHED_AT);
+            return question;
+        });
     }
 
     @Test
@@ -122,6 +139,17 @@ class QuestionBankServiceTest {
 
         assertEquals(QuestionBankItemStatus.ACTIVE, response.getStatus());
         assertEquals(List.of("answer"), response.getAcceptedAnswers());
+    }
+
+    @Test
+    void createResponseUsesFlushedAuditTimestamps() {
+        QuestionBankItemResponse response = service.create(
+                request(QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"), null),
+                user(7L, UserRole.TEACHER));
+
+        assertEquals(FLUSHED_AT, response.getCreatedAt());
+        assertEquals(FLUSHED_AT, response.getUpdatedAt());
+        verify(questionRepository).saveAndFlush(any(QuestionBankItem.class));
     }
 
     @Test
@@ -181,6 +209,21 @@ class QuestionBankServiceTest {
 
         assertThrows(BadRequestException.class, () -> service.create(invalid, teacher));
         verify(questionRepository, never()).save(any());
+        verify(questionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void directServiceCallsRejectScoresOutsideNumericNineteenTwo() {
+        AppUser teacher = user(7L, UserRole.TEACHER);
+        CreateQuestionRequest excessiveScale = request(
+                QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"), null);
+        excessiveScale.setDefaultScore(new BigDecimal("1.001"));
+        CreateQuestionRequest excessiveIntegerDigits = request(
+                QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"), null);
+        excessiveIntegerDigits.setDefaultScore(new BigDecimal("100000000000000000.00"));
+
+        assertThrows(BadRequestException.class, () -> service.create(excessiveScale, teacher));
+        assertThrows(BadRequestException.class, () -> service.create(excessiveIntegerDigits, teacher));
     }
 
     @Test
@@ -197,6 +240,21 @@ class QuestionBankServiceTest {
         assertEquals(QuestionBankItemStatus.ACTIVE, response.getStatus());
         assertEquals(7L, response.getCreatedByUserId());
         assertEquals(7L, response.getLastModifiedByUserId());
+    }
+
+    @Test
+    void updateResponseUsesFlushedAuditTimestamp() {
+        QuestionBankItem existing = persistedQuestion(55L, 7L, null, QuestionBankItemStatus.DRAFT);
+        when(questionRepository.findById(55L)).thenReturn(Optional.of(existing));
+
+        QuestionBankItemResponse response = service.update(
+                55L,
+                updateRequest(QuestionType.FILL_IN_BLANK, "Updated", Map.of(), List.of("answer"),
+                        QuestionBankItemStatus.ACTIVE),
+                user(7L, UserRole.TEACHER));
+
+        assertEquals(FLUSHED_AT, response.getUpdatedAt());
+        verify(questionRepository).saveAndFlush(existing);
     }
 
     @Test
@@ -236,10 +294,10 @@ class QuestionBankServiceTest {
         when(dictionaryWordRepository.existsByDictionaryIdAndMetaWordId(10L, 20L)).thenReturn(true);
 
         QuestionBankItemResponse response = service.copy(
-                55L, new CopyQuestionRequest(" Copied stem ", null), user(7L, UserRole.TEACHER));
+                55L, new CopyQuestionRequest(" Copied stem "), user(7L, UserRole.TEACHER));
 
         ArgumentCaptor<QuestionBankItem> captor = ArgumentCaptor.forClass(QuestionBankItem.class);
-        verify(questionRepository).save(captor.capture());
+        verify(questionRepository).saveAndFlush(captor.capture());
         QuestionBankItem copied = captor.getValue();
         assertEquals("Copied stem", response.getStem());
         assertEquals(QuestionBankItemStatus.DRAFT, copied.getStatus());
@@ -254,12 +312,37 @@ class QuestionBankServiceTest {
     }
 
     @Test
+    void copyAlwaysCreatesDraft() {
+        QuestionBankItem source = persistedQuestion(55L, 8L, null, QuestionBankItemStatus.ACTIVE);
+        when(questionRepository.findById(55L)).thenReturn(Optional.of(source));
+
+        QuestionBankItemResponse response = service.copy(
+                55L,
+                new CopyQuestionRequest(null),
+                user(7L, UserRole.TEACHER));
+
+        assertEquals(QuestionBankItemStatus.DRAFT, response.getStatus());
+    }
+
+    @Test
+    void copyResponseUsesFlushedAuditTimestamps() {
+        QuestionBankItem source = persistedQuestion(55L, 8L, null, QuestionBankItemStatus.ACTIVE);
+        when(questionRepository.findById(55L)).thenReturn(Optional.of(source));
+
+        QuestionBankItemResponse response = service.copy(55L, null, user(7L, UserRole.TEACHER));
+
+        assertEquals(FLUSHED_AT, response.getCreatedAt());
+        assertEquals(FLUSHED_AT, response.getUpdatedAt());
+        verify(questionRepository).saveAndFlush(any(QuestionBankItem.class));
+    }
+
+    @Test
     void archivedQuestionCannotBeCopied() {
         when(questionRepository.findById(55L))
                 .thenReturn(Optional.of(persistedQuestion(55L, 8L, null, QuestionBankItemStatus.ARCHIVED)));
 
         assertThrows(AccessDeniedException.class, () -> service.copy(
-                55L, new CopyQuestionRequest(null, null), user(7L, UserRole.TEACHER)));
+                55L, new CopyQuestionRequest(null), user(7L, UserRole.TEACHER)));
     }
 
     @Test
@@ -291,7 +374,7 @@ class QuestionBankServiceTest {
                 () -> service.update(1L, updateRequest(QuestionType.FILL_IN_BLANK, "Stem", Map.of(),
                         List.of("answer"), QuestionBankItemStatus.DRAFT), student));
         assertThrows(AccessDeniedException.class,
-                () -> service.copy(1L, new CopyQuestionRequest(null, null), student));
+                () -> service.copy(1L, new CopyQuestionRequest(null), student));
         assertThrows(AccessDeniedException.class, () -> service.archive(1L, student));
         assertThrows(AccessDeniedException.class, () -> service.search(new QuestionBankSearchRequest(), student));
         verify(questionRepository, never()).findById(anyLong());
@@ -381,6 +464,46 @@ class QuestionBankServiceTest {
                 .collect(Collectors.toSet());
         assertTrue(equalityValues.containsAll(Set.of(
                 QuestionBankItemStatus.ACTIVE, QuestionType.SINGLE_CHOICE, 7L, 8L, 10L, 20L)));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void searchRejectsMalformedPersistedJson() {
+        QuestionBankItem malformed = persistedQuestion(55L, 8L, null, QuestionBankItemStatus.ACTIVE);
+        malformed.setOptionsJson("{not-json");
+        when(questionRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(malformed)));
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.search(new QuestionBankSearchRequest(), user(7L, UserRole.TEACHER)));
+
+        assertEquals("Failed to deserialize question options", exception.getMessage());
+    }
+
+    @Test
+    void createWrapsObjectMapperSerializationFailures() throws Exception {
+        ObjectMapper failingObjectMapper = mock(ObjectMapper.class);
+        when(failingObjectMapper.writeValueAsString(any()))
+                .thenThrow(new JsonProcessingException("serialization failed") {
+                });
+        QuestionBankService failingService = new QuestionBankService(
+                questionRepository,
+                dictionaryRepository,
+                metaWordRepository,
+                dictionaryWordRepository,
+                mock(ExamPaperAccessService.class),
+                new ExamPaperAnswerNormalizer(),
+                failingObjectMapper);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> failingService.create(
+                        request(QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"), null),
+                        user(7L, UserRole.TEACHER)));
+
+        assertEquals("Failed to serialize question options", exception.getMessage());
+        verify(questionRepository, never()).saveAndFlush(any());
     }
 
     private CreateQuestionRequest request(

@@ -1,14 +1,7 @@
 package com.example.words.controller;
 
-import com.example.words.dto.CopyQuestionRequest;
-import com.example.words.dto.CreateQuestionRequest;
-import com.example.words.dto.QuestionBankItemResponse;
-import com.example.words.dto.QuestionBankSearchRequest;
-import com.example.words.dto.UpdateQuestionRequest;
-import com.example.words.model.AppUser;
-import com.example.words.service.CurrentUserService;
-import com.example.words.service.QuestionBankService;
 import jakarta.validation.Valid;
+
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +15,15 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.example.words.dto.CopyQuestionRequest;
+import com.example.words.dto.CreateQuestionRequest;
+import com.example.words.dto.QuestionBankItemResponse;
+import com.example.words.dto.QuestionBankSearchRequest;
+import com.example.words.dto.UpdateQuestionRequest;
+import com.example.words.model.AppUser;
+import com.example.words.service.CurrentUserService;
+import com.example.words.service.QuestionBankService;
 
 @RestController
 @RequestMapping("/api/teacher/questions")

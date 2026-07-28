@@ -1,19 +1,22 @@
 package com.example.words.dto;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.example.words.model.QuestionBankItemStatus;
-import com.example.words.model.QuestionType;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
+import com.example.words.model.QuestionBankItemStatus;
+import com.example.words.model.QuestionType;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QuestionBankRequestValidationTest {
 
@@ -73,6 +76,23 @@ class QuestionBankRequestValidationTest {
     }
 
     @Test
+    void scoreMustFitNumericNineteenTwoColumn() {
+        CreateQuestionRequest excessiveScale = request(
+                QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"));
+        excessiveScale.setDefaultScore(new BigDecimal("1.001"));
+        CreateQuestionRequest excessiveIntegerDigits = request(
+                QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"));
+        excessiveIntegerDigits.setDefaultScore(new BigDecimal("100000000000000000.00"));
+        CreateQuestionRequest maximumValue = request(
+                QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"));
+        maximumValue.setDefaultScore(new BigDecimal("99999999999999999.99"));
+
+        assertViolation(excessiveScale, "defaultScore");
+        assertViolation(excessiveIntegerDigits, "defaultScore");
+        assertTrue(validator.validate(maximumValue).isEmpty());
+    }
+
+    @Test
     void noQuestionCanDeclareMoreThanFourOptions() {
         CreateQuestionRequest request = request(
                 QuestionType.SINGLE_CHOICE,
@@ -103,6 +123,13 @@ class QuestionBankRequestValidationTest {
                 violations.stream()
                         .map(violation -> violation.getPropertyPath().toString())
                         .collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void copyRequestOnlyAllowsStemOverride() {
+        assertEquals(Set.of("stem"), java.util.Arrays.stream(CopyQuestionRequest.class.getDeclaredFields())
+                .map(java.lang.reflect.Field::getName)
+                .collect(java.util.stream.Collectors.toSet()));
     }
 
     private CreateQuestionRequest request(

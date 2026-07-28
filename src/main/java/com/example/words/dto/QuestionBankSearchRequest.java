@@ -1,10 +1,12 @@
 package com.example.words.dto;
 
-import com.example.words.model.QuestionBankItemStatus;
-import com.example.words.model.QuestionType;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+
 import lombok.Data;
+
+import com.example.words.model.QuestionBankItemStatus;
+import com.example.words.model.QuestionType;
 
 @Data
 public class QuestionBankSearchRequest {
