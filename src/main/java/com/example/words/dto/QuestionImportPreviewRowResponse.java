@@ -33,5 +33,5 @@ public class QuestionImportPreviewRowResponse {
     private Long metaWordId;
     private String message;
     private Long duplicateQuestionId;
-    private Map<String, String> rawRow;
+    private Map<String, Object> rawRow;
 }

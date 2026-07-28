@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -217,6 +218,36 @@ class QuestionImportServiceTest {
     }
 
     @Test
+    void previewPreservesEveryExtraCsvValueInRawRowJson() throws Exception {
+        String csv = "questionType,stem,correctAnswers,score\n"
+                + "FILL_IN_BLANK,Question,answer,1,first extra,second extra\n";
+
+        QuestionImportPreviewRowResponse row = service.preview(file("extra.csv", csv), teacher(7L))
+                .getRows().get(0);
+
+        assertEquals(QuestionImportPreviewRowStatus.INVALID, row.getStatus());
+        assertEquals(List.of("first extra", "second extra"), row.getRawRow().get("_extraValues"));
+        ArgumentCaptor<List<QuestionImportPreviewRow>> captor = ArgumentCaptor.forClass(List.class);
+        verify(rowRepository).saveAll(captor.capture());
+        assertEquals("first extra", objectMapper.readTree(captor.getValue().get(0).getRawRowJson())
+                .get("_extraValues").get(0).asText());
+        assertEquals("second extra", objectMapper.readTree(captor.getValue().get(0).getRawRowJson())
+                .get("_extraValues").get(1).asText());
+    }
+
+    @Test
+    void previewScansSharedQuestionBankOnceForMultipleRows() {
+        String csv = "questionType,stem,correctAnswers,score\n"
+                + "FILL_IN_BLANK,Question one,one,1\n"
+                + "FILL_IN_BLANK,Question two,two,1\n";
+
+        QuestionImportPreviewResponse response = service.preview(file("two.csv", csv), teacher(7L));
+
+        assertEquals(2, response.getValidRows());
+        verify(questionRepository, times(1)).findAll();
+    }
+
+    @Test
     void previewFlagsCanonicalMatchesAgainstSharedQuestionBank() throws Exception {
         QuestionBankItem existing = new QuestionBankItem();
         existing.setId(88L);
@@ -273,7 +304,7 @@ class QuestionImportServiceTest {
     @Test
     void confirmExpiresPastDuePreviewAndCreatesNothing() {
         QuestionImportBatch batch = batch(40L, 7L, QuestionImportBatchStatus.PREVIEWED, LOCAL_NOW.minusSeconds(1));
-        when(batchRepository.findById(40L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(batch));
 
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
@@ -281,7 +312,7 @@ class QuestionImportServiceTest {
 
         assertEquals("Question import batch has expired", exception.getMessage());
         assertEquals(QuestionImportBatchStatus.EXPIRED, batch.getStatus());
-        verify(batchRepository).markExpired(40L);
+        verify(batchRepository).save(batch);
         verify(questionRepository, never()).saveAndFlush(any());
     }
 
@@ -299,7 +330,7 @@ class QuestionImportServiceTest {
         QuestionImportPreviewRow invalid = previewRow(
                 104L, 40L, 4, QuestionImportPreviewRowStatus.INVALID,
                 null, "Invalid", Map.of(), List.of());
-        when(batchRepository.findById(40L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(batch));
         when(rowRepository.findByBatchIdOrderByRowNumberAsc(40L)).thenReturn(List.of(valid, duplicate, invalid));
         when(dictionaryRepository.existsById(11L)).thenReturn(true);
         when(metaWordRepository.existsById(22L)).thenReturn(true);
@@ -335,7 +366,7 @@ class QuestionImportServiceTest {
         QuestionImportPreviewRow invalid = previewRow(
                 104L, 40L, 4, QuestionImportPreviewRowStatus.INVALID,
                 null, "Invalid", Map.of(), List.of());
-        when(batchRepository.findById(40L)).thenReturn(Optional.of(batch));
+        when(batchRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(batch));
         when(rowRepository.findByBatchIdOrderByRowNumberAsc(40L)).thenReturn(List.of(invalid));
 
         assertThrows(BadRequestException.class,

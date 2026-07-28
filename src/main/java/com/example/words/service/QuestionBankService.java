@@ -137,14 +137,20 @@ public class QuestionBankService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<Long> findCanonicalDuplicateId(ValidatedQuestion candidate) {
-        if (candidate == null) {
+    public QuestionFingerprintIndex loadQuestionFingerprintIndex() {
+        Map<QuestionFingerprint, Long> questionIdsByFingerprint = new LinkedHashMap<>();
+        for (QuestionBankItem question : questionRepository.findAll()) {
+            questionIdsByFingerprint.putIfAbsent(toFingerprint(question), question.getId());
+        }
+        return new QuestionFingerprintIndex(Map.copyOf(questionIdsByFingerprint));
+    }
+
+    public Optional<Long> findCanonicalDuplicateId(
+            QuestionFingerprintIndex index, ValidatedQuestion candidate) {
+        if (index == null || candidate == null) {
             return Optional.empty();
         }
-        return questionRepository.findAll().stream()
-                .filter(question -> canonicalMatch(question, candidate))
-                .map(QuestionBankItem::getId)
-                .findFirst();
+        return Optional.ofNullable(index.questionIdsByFingerprint.get(toFingerprint(candidate)));
     }
 
     @Transactional
@@ -396,17 +402,24 @@ public class QuestionBankService {
         question.setArchivedAt(null);
     }
 
-    private boolean canonicalMatch(QuestionBankItem question, ValidatedQuestion candidate) {
-        if (question.getQuestionType() != candidate.questionType()
-                || !candidate.stem().equals(trimToNull(question.getStem()))) {
-            return false;
-        }
+    private QuestionFingerprint toFingerprint(QuestionBankItem question) {
         Map<String, String> options = normalizeOptions(readOptions(question.getOptionsJson()));
         List<String> answers = normalizeAnswers(
                 question.getQuestionType(),
                 readStringList(question.getAcceptedAnswersJson(), "accepted answers"));
-        return candidate.options().equals(options)
-                && Set.copyOf(candidate.acceptedAnswers()).equals(Set.copyOf(answers));
+        return new QuestionFingerprint(
+                question.getQuestionType(),
+                trimToNull(question.getStem()),
+                options,
+                Set.copyOf(answers));
+    }
+
+    private QuestionFingerprint toFingerprint(ValidatedQuestion question) {
+        return new QuestionFingerprint(
+                question.questionType(),
+                question.stem(),
+                question.options(),
+                Set.copyOf(question.acceptedAnswers()));
     }
 
     private QuestionBankItem findQuestion(Long questionId) {
@@ -579,5 +592,21 @@ public class QuestionBankService {
             String explanation,
             Long dictionaryId,
             Long metaWordId) {
+    }
+
+    public static final class QuestionFingerprintIndex {
+
+        private final Map<QuestionFingerprint, Long> questionIdsByFingerprint;
+
+        private QuestionFingerprintIndex(Map<QuestionFingerprint, Long> questionIdsByFingerprint) {
+            this.questionIdsByFingerprint = questionIdsByFingerprint;
+        }
+    }
+
+    private record QuestionFingerprint(
+            QuestionType questionType,
+            String stem,
+            Map<String, String> options,
+            Set<String> acceptedAnswers) {
     }
 }

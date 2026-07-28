@@ -65,6 +65,8 @@ public class QuestionImportService {
             "correctAnswers", "score", "difficulty", "tags", "explanation", "dictionaryName", "word");
     private static final TypeReference<LinkedHashMap<String, String>> STRING_MAP_TYPE = new TypeReference<>() {
     };
+    private static final TypeReference<LinkedHashMap<String, Object>> RAW_ROW_TYPE = new TypeReference<>() {
+    };
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {
     };
 
@@ -115,7 +117,9 @@ public class QuestionImportService {
             batch.setExpiresAt(now().plusHours(RETENTION_HOURS));
             batch = batchRepository.saveAndFlush(batch);
 
-            List<QuestionImportPreviewRow> rows = readRows(reader, headers, batch.getId());
+            QuestionBankService.QuestionFingerprintIndex fingerprintIndex =
+                    questionBankService.loadQuestionFingerprintIndex();
+            List<QuestionImportPreviewRow> rows = readRows(reader, headers, batch.getId(), fingerprintIndex);
             List<QuestionImportPreviewRow> savedRows = toList(rowRepository.saveAll(rows));
             updateCounts(batch, savedRows);
             batchRepository.save(batch);
@@ -134,11 +138,11 @@ public class QuestionImportService {
         return toResponse(batch, rowRepository.findByBatchIdOrderByRowNumberAsc(batch.getId()));
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = QuestionImportExpiredException.class)
     public QuestionImportConfirmResponse confirm(
             Long batchId, ConfirmQuestionImportRequest request, AppUser actor) {
         ensureStaff(actor);
-        QuestionImportBatch batch = findBatch(batchId);
+        QuestionImportBatch batch = findBatchForUpdate(batchId);
         ensureCanConfirm(batch, actor);
         ensureConfirmable(batch);
 
@@ -210,7 +214,11 @@ public class QuestionImportService {
         return List.copyOf(headers);
     }
 
-    private List<QuestionImportPreviewRow> readRows(CSVReader reader, List<String> headers, Long batchId)
+    private List<QuestionImportPreviewRow> readRows(
+            CSVReader reader,
+            List<String> headers,
+            Long batchId,
+            QuestionBankService.QuestionFingerprintIndex fingerprintIndex)
             throws IOException, CsvValidationException {
         List<QuestionImportPreviewRow> rows = new ArrayList<>();
         while (true) {
@@ -220,29 +228,37 @@ public class QuestionImportService {
                 break;
             }
             Map<String, String> rawRow = rawRow(headers, values);
-            QuestionImportPreviewRow row = baseRow(batchId, rowNumber, rawRow);
+            Map<String, Object> rawPayload = rawPayload(rawRow, headers.size(), values);
+            QuestionImportPreviewRow row = baseRow(batchId, rowNumber, rawRow, rawPayload);
             if (values.length > headers.size()) {
                 markInvalid(row, "CSV row contains more values than headers");
             } else {
-                parseRow(row, rawRow);
+                parseRow(row, rawRow, fingerprintIndex);
             }
             rows.add(row);
         }
         return rows;
     }
 
-    private QuestionImportPreviewRow baseRow(Long batchId, int rowNumber, Map<String, String> rawRow) {
+    private QuestionImportPreviewRow baseRow(
+            Long batchId,
+            int rowNumber,
+            Map<String, String> rawRow,
+            Map<String, Object> rawPayload) {
         QuestionImportPreviewRow row = new QuestionImportPreviewRow();
         row.setBatchId(batchId);
         row.setRowNumber(rowNumber);
         row.setStatus(QuestionImportPreviewRowStatus.INVALID);
-        row.setRawRowJson(writeJson(rawRow, "raw CSV row"));
+        row.setRawRowJson(writeJson(rawPayload, "raw CSV row"));
         row.setDictionaryName(trimToNull(rawRow.get("dictionaryName")));
         row.setWord(trimToNull(rawRow.get("word")));
         return row;
     }
 
-    private void parseRow(QuestionImportPreviewRow row, Map<String, String> rawRow) {
+    private void parseRow(
+            QuestionImportPreviewRow row,
+            Map<String, String> rawRow,
+            QuestionBankService.QuestionFingerprintIndex fingerprintIndex) {
         try {
             QuestionType questionType = parseQuestionType(rawRow.get("questionType"));
             Map<String, String> options = parseOptions(rawRow);
@@ -268,7 +284,7 @@ public class QuestionImportService {
             QuestionBankService.ValidatedQuestion normalized = questionBankService.validateAndNormalize(request);
             applyNormalized(row, normalized);
 
-            Optional<Long> duplicateId = questionBankService.findCanonicalDuplicateId(normalized);
+            Optional<Long> duplicateId = questionBankService.findCanonicalDuplicateId(fingerprintIndex, normalized);
             row.setDuplicateQuestionId(duplicateId.orElse(null));
             row.setStatus(duplicateId.isPresent()
                     ? QuestionImportPreviewRowStatus.DUPLICATE_CANDIDATE
@@ -409,6 +425,15 @@ public class QuestionImportService {
         return rawRow;
     }
 
+    private Map<String, Object> rawPayload(
+            Map<String, String> rawRow, int headerCount, String[] values) {
+        Map<String, Object> payload = new LinkedHashMap<>(rawRow);
+        if (values.length > headerCount) {
+            payload.put("_extraValues", Arrays.asList(Arrays.copyOfRange(values, headerCount, values.length)));
+        }
+        return payload;
+    }
+
     private void markInvalid(QuestionImportPreviewRow row, String message) {
         row.setStatus(QuestionImportPreviewRowStatus.INVALID);
         row.setMessage(message);
@@ -431,6 +456,14 @@ public class QuestionImportService {
             throw new BadRequestException("Question import batch ID is required");
         }
         return batchRepository.findById(batchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Question import batch not found: " + batchId));
+    }
+
+    private QuestionImportBatch findBatchForUpdate(Long batchId) {
+        if (batchId == null) {
+            throw new BadRequestException("Question import batch ID is required");
+        }
+        return batchRepository.findByIdForUpdate(batchId)
                 .orElseThrow(() -> new ResourceNotFoundException("Question import batch not found: " + batchId));
     }
 
@@ -461,8 +494,8 @@ public class QuestionImportService {
         }
         if (isExpired(batch)) {
             batch.setStatus(QuestionImportBatchStatus.EXPIRED);
-            batchRepository.markExpired(batch.getId());
-            throw new BadRequestException("Question import batch has expired");
+            batchRepository.save(batch);
+            throw new QuestionImportExpiredException();
         }
     }
 
@@ -525,7 +558,7 @@ public class QuestionImportService {
                 row.getMetaWordId(),
                 row.getMessage(),
                 row.getDuplicateQuestionId(),
-                readMap(row.getRawRowJson(), "raw CSV row"));
+                readRawRow(row.getRawRowJson()));
     }
 
     private Map<String, String> readMap(String json, String fieldName) {
@@ -547,6 +580,17 @@ public class QuestionImportService {
             return objectMapper.readValue(json, STRING_LIST_TYPE);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Failed to deserialize " + fieldName, exception);
+        }
+    }
+
+    private Map<String, Object> readRawRow(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, RAW_ROW_TYPE);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to deserialize raw CSV row", exception);
         }
     }
 
@@ -581,5 +625,12 @@ public class QuestionImportService {
     }
 
     private record TraceResolution(Long dictionaryId, Long metaWordId, List<String> warnings) {
+    }
+
+    private static final class QuestionImportExpiredException extends BadRequestException {
+
+        private QuestionImportExpiredException() {
+            super("Question import batch has expired");
+        }
     }
 }
