@@ -142,6 +142,39 @@ class QuestionBankServiceTest {
     }
 
     @Test
+    void validateAndNormalizeForImportUsesCanonicalQuestionRules() {
+        Map<String, String> options = new LinkedHashMap<>();
+        options.put(" b ", " Second ");
+        options.put("a", " First ");
+        CreateQuestionRequest request = request(
+                QuestionType.MULTIPLE_CHOICE,
+                options,
+                List.of(" b ", "A", "a"),
+                QuestionBankItemStatus.ACTIVE);
+        request.setStem("  Imported stem  ");
+
+        QuestionBankService.ValidatedQuestion normalized = service.validateAndNormalize(request);
+
+        assertEquals("Imported stem", normalized.stem());
+        assertEquals(Map.of("A", "First", "B", "Second"), normalized.options());
+        assertEquals(List.of("A", "B"), normalized.acceptedAnswers());
+    }
+
+    @Test
+    void createImportedAlwaysCreatesActiveQuestionWithImportTrace() {
+        QuestionBankItemResponse response = service.createImported(
+                request(QuestionType.FILL_IN_BLANK, Map.of(), List.of(" answer "), null),
+                40L,
+                user(7L, UserRole.TEACHER));
+
+        assertEquals(QuestionBankItemStatus.ACTIVE, response.getStatus());
+        assertEquals(7L, response.getCreatedByUserId());
+        assertEquals(7L, response.getImportedByUserId());
+        assertEquals(7L, response.getLastModifiedByUserId());
+        assertEquals(40L, response.getImportBatchId());
+    }
+
+    @Test
     void createResponseUsesFlushedAuditTimestamps() {
         QuestionBankItemResponse response = service.create(
                 request(QuestionType.FILL_IN_BLANK, Map.of(), List.of("answer"), null),

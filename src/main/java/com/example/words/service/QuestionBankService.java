@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -84,7 +85,7 @@ public class QuestionBankService {
 
         QuestionBankItemStatus status = defaultStatus(request.getStatus());
         ensureWritableStatus(status);
-        NormalizedQuestion normalized = normalizeAndValidate(
+        ValidatedQuestion normalized = normalizeAndValidate(
                 request.getQuestionType(),
                 request.getStem(),
                 request.getOptions(),
@@ -102,6 +103,50 @@ public class QuestionBankService {
         return toResponse(questionRepository.saveAndFlush(question));
     }
 
+    public ValidatedQuestion validateAndNormalize(CreateQuestionRequest request) {
+        if (request == null) {
+            throw new BadRequestException("Question request is required");
+        }
+        return normalizeAndValidate(
+                request.getQuestionType(),
+                request.getStem(),
+                request.getOptions(),
+                request.getAcceptedAnswers(),
+                request.getDefaultScore(),
+                request.getDifficulty(),
+                request.getTags(),
+                request.getExplanation(),
+                request.getDictionaryId(),
+                request.getMetaWordId());
+    }
+
+    @Transactional
+    public QuestionBankItemResponse createImported(CreateQuestionRequest request, Long batchId, AppUser actor) {
+        ensureStaff(actor);
+        if (batchId == null) {
+            throw new BadRequestException("Question import batch ID is required");
+        }
+        ValidatedQuestion normalized = validateAndNormalize(request);
+
+        QuestionBankItem question = new QuestionBankItem();
+        apply(question, normalized, QuestionBankItemStatus.ACTIVE, actor.getId());
+        question.setCreatedByUserId(actor.getId());
+        question.setImportedByUserId(actor.getId());
+        question.setImportBatchId(batchId);
+        return toResponse(questionRepository.saveAndFlush(question));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Long> findCanonicalDuplicateId(ValidatedQuestion candidate) {
+        if (candidate == null) {
+            return Optional.empty();
+        }
+        return questionRepository.findAll().stream()
+                .filter(question -> canonicalMatch(question, candidate))
+                .map(QuestionBankItem::getId)
+                .findFirst();
+    }
+
     @Transactional
     public QuestionBankItemResponse update(Long questionId, UpdateQuestionRequest request, AppUser actor) {
         ensureStaff(actor);
@@ -116,7 +161,7 @@ public class QuestionBankService {
         }
         ensureWritableStatus(request.getStatus());
 
-        NormalizedQuestion normalized = normalizeAndValidate(
+        ValidatedQuestion normalized = normalizeAndValidate(
                 request.getQuestionType(),
                 request.getStem(),
                 request.getOptions(),
@@ -140,7 +185,7 @@ public class QuestionBankService {
         CopyQuestionRequest resolvedRequest = request == null ? new CopyQuestionRequest() : request;
         String stem = resolvedRequest.getStem() == null ? source.getStem() : resolvedRequest.getStem();
 
-        NormalizedQuestion normalized = normalizeAndValidate(
+        ValidatedQuestion normalized = normalizeAndValidate(
                 source.getQuestionType(),
                 stem,
                 readOptions(source.getOptionsJson()),
@@ -193,7 +238,7 @@ public class QuestionBankService {
         return new PageImpl<>(content, pageable, result.getTotalElements());
     }
 
-    private NormalizedQuestion normalizeAndValidate(
+    private ValidatedQuestion normalizeAndValidate(
             QuestionType questionType,
             String stem,
             Map<String, String> options,
@@ -225,7 +270,7 @@ public class QuestionBankService {
         validateTypeSpecificRules(questionType, normalizedOptions, normalizedAnswers);
         validateTrace(dictionaryId, metaWordId);
 
-        return new NormalizedQuestion(
+        return new ValidatedQuestion(
                 questionType,
                 normalizedStem,
                 normalizedOptions,
@@ -333,7 +378,7 @@ public class QuestionBankService {
 
     private void apply(
             QuestionBankItem question,
-            NormalizedQuestion normalized,
+            ValidatedQuestion normalized,
             QuestionBankItemStatus status,
             Long modifiedByUserId) {
         question.setQuestionType(normalized.questionType());
@@ -349,6 +394,19 @@ public class QuestionBankService {
         question.setLastModifiedByUserId(modifiedByUserId);
         question.setStatus(status);
         question.setArchivedAt(null);
+    }
+
+    private boolean canonicalMatch(QuestionBankItem question, ValidatedQuestion candidate) {
+        if (question.getQuestionType() != candidate.questionType()
+                || !candidate.stem().equals(trimToNull(question.getStem()))) {
+            return false;
+        }
+        Map<String, String> options = normalizeOptions(readOptions(question.getOptionsJson()));
+        List<String> answers = normalizeAnswers(
+                question.getQuestionType(),
+                readStringList(question.getAcceptedAnswersJson(), "accepted answers"));
+        return candidate.options().equals(options)
+                && Set.copyOf(candidate.acceptedAnswers()).equals(Set.copyOf(answers));
     }
 
     private QuestionBankItem findQuestion(Long questionId) {
@@ -510,7 +568,7 @@ public class QuestionBankService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private record NormalizedQuestion(
+    public record ValidatedQuestion(
             QuestionType questionType,
             String stem,
             Map<String, String> options,

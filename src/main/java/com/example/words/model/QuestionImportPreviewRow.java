@@ -83,6 +83,12 @@ public class QuestionImportPreviewRow {
     @Column(name = "word")
     private String word;
 
+    @Column(name = "dictionary_id")
+    private Long dictionaryId;
+
+    @Column(name = "meta_word_id")
+    private Long metaWordId;
+
     @Column(name = "message", columnDefinition = "TEXT")
     private String message;
 
