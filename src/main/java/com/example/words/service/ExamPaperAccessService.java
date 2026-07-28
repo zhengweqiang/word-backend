@@ -1,5 +1,8 @@
 package com.example.words.service;
 
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+
 import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
 import com.example.words.model.ClassroomStatus;
@@ -8,8 +11,6 @@ import com.example.words.model.PaperTemplate;
 import com.example.words.model.QuestionBankItem;
 import com.example.words.model.QuestionBankItemStatus;
 import com.example.words.model.UserRole;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Service;
 
 @Service
 public class ExamPaperAccessService {
@@ -62,7 +63,7 @@ public class ExamPaperAccessService {
     }
 
     public void ensureCanReviewRelease(AppUser actor, PaperRelease release, Long studentId) {
-        if (isAdmin(actor) || actor.getId().equals(release.getPublishedByUserId())
+        if (isAdmin(actor) || (isTeacher(actor) && actor.getId().equals(release.getPublishedByUserId()))
                 || (isTeacher(actor) && teacherStudentService.isTeacherResponsibleForStudent(actor.getId(), studentId))) {
             return;
         }

@@ -1,10 +1,12 @@
 package com.example.words.service;
 
+import java.math.BigDecimal;
+
+import org.springframework.stereotype.Component;
+
 import com.example.words.model.PaperReleaseQuestion;
 import com.example.words.model.PaperTemplateQuestion;
 import com.example.words.model.QuestionBankItem;
-import java.math.BigDecimal;
-import org.springframework.stereotype.Component;
 
 @Component
 public class ExamPaperSnapshotService {

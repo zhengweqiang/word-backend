@@ -1,10 +1,11 @@
 package com.example.words.service;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.times;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.example.words.model.AppUser;
 import com.example.words.model.Classroom;
@@ -14,12 +15,12 @@ import com.example.words.model.PaperTemplate;
 import com.example.words.model.QuestionBankItem;
 import com.example.words.model.QuestionBankItemStatus;
 import com.example.words.model.UserRole;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.access.AccessDeniedException;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ExamPaperAccessServiceTest {
@@ -112,6 +113,15 @@ class ExamPaperAccessServiceTest {
 
         assertThrows(AccessDeniedException.class,
                 () -> accessService.ensureCanPublishToClassroom(user(1L, UserRole.ADMIN), 100L));
+    }
+
+    @Test
+    void studentWithPublisherIdCannotReviewRelease() {
+        PaperRelease release = new PaperRelease();
+        release.setPublishedByUserId(20L);
+
+        assertThrows(AccessDeniedException.class,
+                () -> accessService.ensureCanReviewRelease(user(20L, UserRole.STUDENT), release, 20L));
     }
 
     @Test

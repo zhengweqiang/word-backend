@@ -1,14 +1,16 @@
 package com.example.words.service;
 
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import java.math.BigDecimal;
+
+import org.junit.jupiter.api.Test;
 
 import com.example.words.model.PaperReleaseQuestion;
 import com.example.words.model.PaperTemplateQuestion;
 import com.example.words.model.QuestionBankItem;
 import com.example.words.model.QuestionType;
-import java.math.BigDecimal;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ExamPaperSnapshotServiceTest {
 
