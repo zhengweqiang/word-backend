@@ -430,6 +430,10 @@ public class QuestionBankService {
                 .orElseThrow(() -> new ResourceNotFoundException("Question not found: " + questionId));
     }
 
+    QuestionBankItem findQuestionForPaper(Long questionId) {
+        return findQuestion(questionId);
+    }
+
     private void ensureStaff(AppUser actor) {
         if (actor == null || (actor.getRole() != UserRole.ADMIN && actor.getRole() != UserRole.TEACHER)) {
             throw new AccessDeniedException("Only administrators and teachers can manage the question bank");
