@@ -264,6 +264,7 @@ CREATE TABLE paper_release_questions (
     CONSTRAINT fk_paper_release_questions_meta_word
         FOREIGN KEY (meta_word_id) REFERENCES meta_words(id) ON DELETE RESTRICT,
     CONSTRAINT uk_paper_release_questions_order UNIQUE (paper_release_id, question_order),
+    CONSTRAINT uk_paper_release_questions_id_release UNIQUE (id, paper_release_id),
     CONSTRAINT ck_paper_release_questions_type CHECK (
         question_type IN ('SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'FILL_IN_BLANK')
     ),
@@ -327,6 +328,7 @@ CREATE TABLE student_paper_attempts (
     CONSTRAINT fk_student_paper_attempts_invalidated_by
         FOREIGN KEY (invalidated_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,
     CONSTRAINT uk_student_paper_attempts_release_student UNIQUE (paper_release_id, student_id),
+    CONSTRAINT uk_student_paper_attempts_id_release UNIQUE (id, paper_release_id),
     CONSTRAINT ck_student_paper_attempts_status CHECK (
         status IN ('NOT_STARTED', 'IN_PROGRESS', 'SUBMITTED', 'OVERDUE', 'SUBMITTED_LATE', 'INVALIDATED')
     ),
@@ -345,6 +347,7 @@ CREATE INDEX idx_student_paper_attempts_status
 CREATE TABLE student_paper_answers (
     id BIGSERIAL PRIMARY KEY,
     attempt_id BIGINT NOT NULL,
+    paper_release_id BIGINT NOT NULL,
     release_question_id BIGINT NOT NULL,
     selected_answers_json TEXT,
     blank_answers_json TEXT,
@@ -355,14 +358,18 @@ CREATE TABLE student_paper_answers (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_student_paper_answers_attempt
-        FOREIGN KEY (attempt_id) REFERENCES student_paper_attempts(id) ON DELETE RESTRICT,
+        FOREIGN KEY (attempt_id, paper_release_id)
+        REFERENCES student_paper_attempts(id, paper_release_id) ON DELETE RESTRICT,
     CONSTRAINT fk_student_paper_answers_release_question
-        FOREIGN KEY (release_question_id) REFERENCES paper_release_questions(id) ON DELETE RESTRICT,
+        FOREIGN KEY (release_question_id, paper_release_id)
+        REFERENCES paper_release_questions(id, paper_release_id) ON DELETE RESTRICT,
     CONSTRAINT uk_student_paper_answers_question UNIQUE (attempt_id, release_question_id),
     CONSTRAINT ck_student_paper_answers_score CHECK (earned_score IS NULL OR earned_score >= 0)
 );
 
 CREATE INDEX idx_student_paper_answers_attempt
     ON student_paper_answers (attempt_id);
+CREATE INDEX idx_student_paper_answers_release
+    ON student_paper_answers (paper_release_id);
 CREATE INDEX idx_student_paper_answers_question
     ON student_paper_answers (release_question_id);

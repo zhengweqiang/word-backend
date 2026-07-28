@@ -28,6 +28,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
         ),
         indexes = {
                 @Index(name = "idx_student_paper_answers_attempt", columnList = "attempt_id"),
+                @Index(name = "idx_student_paper_answers_release", columnList = "paper_release_id"),
                 @Index(name = "idx_student_paper_answers_question", columnList = "release_question_id")
         }
 )
@@ -43,6 +44,9 @@ public class StudentPaperAnswer {
 
     @Column(name = "attempt_id", nullable = false)
     private Long attemptId;
+
+    @Column(name = "paper_release_id", nullable = false)
+    private Long paperReleaseId;
 
     @Column(name = "release_question_id", nullable = false)
     private Long releaseQuestionId;

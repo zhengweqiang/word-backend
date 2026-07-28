@@ -22,6 +22,7 @@ import com.example.words.model.QuestionType;
 import com.example.words.model.StudentPaperAnswer;
 import com.example.words.model.StudentPaperAttempt;
 import com.example.words.model.StudentPaperAttemptStatus;
+import jakarta.persistence.Column;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
@@ -92,6 +93,19 @@ class ExamPaperPersistenceIntegrationTest {
 
         assertThrows(DataIntegrityViolationException.class,
                 () -> studentPaperAnswerRepository.saveAndFlush(answer(41L, 51L)));
+    }
+
+    @Test
+    void answerCarriesExplicitReleaseIdentity() {
+        Field paperReleaseId = java.util.Arrays.stream(StudentPaperAnswer.class.getDeclaredFields())
+                .filter(field -> field.getName().equals("paperReleaseId"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("StudentPaperAnswer must carry paperReleaseId"));
+
+        Column column = paperReleaseId.getAnnotation(Column.class);
+
+        assertEquals("paper_release_id", column.name());
+        assertFalse(column.nullable());
     }
 
     @Test
@@ -248,6 +262,7 @@ class ExamPaperPersistenceIntegrationTest {
     private StudentPaperAnswer answer(Long attemptId, Long releaseQuestionId) {
         StudentPaperAnswer answer = new StudentPaperAnswer();
         answer.setAttemptId(attemptId);
+        answer.setPaperReleaseId(61L);
         answer.setReleaseQuestionId(releaseQuestionId);
         answer.setSelectedAnswersJson("[\"A\"]");
         return answer;

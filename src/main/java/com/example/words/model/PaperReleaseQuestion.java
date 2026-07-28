@@ -23,10 +23,16 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Entity
 @Table(
         name = "paper_release_questions",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_paper_release_questions_order",
-                columnNames = {"paper_release_id", "question_order"}
-        ),
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_paper_release_questions_order",
+                        columnNames = {"paper_release_id", "question_order"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_paper_release_questions_id_release",
+                        columnNames = {"id", "paper_release_id"}
+                )
+        },
         indexes = {
                 @Index(name = "idx_paper_release_questions_release", columnList = "paper_release_id"),
                 @Index(name = "idx_paper_release_questions_source", columnList = "source_question_id")
