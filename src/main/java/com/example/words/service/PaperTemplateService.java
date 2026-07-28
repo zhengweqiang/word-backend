@@ -92,8 +92,28 @@ public class PaperTemplateService {
     }
 
     @Transactional
+    public PublicationSource lockReadyForPublishing(Long paperId, AppUser actor) {
+        ensureStaff(actor);
+        PaperTemplate paper = findPaperForUpdate(paperId);
+        if (actor.getRole() != UserRole.ADMIN) {
+            accessService.ensureCanManagePaper(actor, paper);
+        }
+        if (paper.getStatus() != PaperTemplateStatus.READY) {
+            throw new BadRequestException("Only READY papers can be published");
+        }
+        List<PaperTemplateQuestion> questions = loadQuestions(paper.getId());
+        if (questions.isEmpty()) {
+            throw new BadRequestException("Paper must contain at least one active question");
+        }
+        return new PublicationSource(paper, List.copyOf(questions));
+    }
+
+    public record PublicationSource(PaperTemplate paper, List<PaperTemplateQuestion> questions) {
+    }
+
+    @Transactional
     public PaperTemplateResponse update(Long paperId, UpdatePaperTemplateRequest request, AppUser actor) {
-        PaperTemplate paper = findPaper(paperId);
+        PaperTemplate paper = findPaperForUpdate(paperId);
         accessService.ensureCanManagePaper(actor, paper);
         ensureEditable(paper);
         if (request == null) {
@@ -143,7 +163,7 @@ public class PaperTemplateService {
     @Transactional
     public PaperTemplateResponse copy(Long paperId, CopyPaperTemplateRequest request, AppUser actor) {
         ensureStaff(actor);
-        PaperTemplate source = findPaper(paperId);
+        PaperTemplate source = findPaperForUpdate(paperId);
         ensureCanViewOrCopy(source, actor);
         String requestedTitle = request == null ? null : request.getTitle();
         String title = requestedTitle == null
@@ -254,8 +274,10 @@ public class PaperTemplateService {
 
     @Transactional
     public void archive(Long paperId, AppUser actor) {
-        PaperTemplate paper = findPaper(paperId);
-        accessService.ensureCanManagePaper(actor, paper);
+        PaperTemplate paper = findPaperForUpdate(paperId);
+        if (!isAdmin(actor)) {
+            accessService.ensureCanManagePaper(actor, paper);
+        }
         if (paper.getStatus() == PaperTemplateStatus.ARCHIVED) {
             return;
         }

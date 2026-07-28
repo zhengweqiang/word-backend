@@ -3,7 +3,7 @@ import type { UserRole } from "@/types/api";
 export interface NavItem {
     href: string;
     label: string;
-    icon: "dashboard" | "users" | "points" | "bot" | "school" | "chat" | "book" | "video" | "cloud" | "calendar" | "import";
+    icon: "dashboard" | "users" | "points" | "bot" | "school" | "chat" | "book" | "video" | "cloud" | "calendar" | "import" | "assessment";
     roles: UserRole[];
 }
 
@@ -11,6 +11,7 @@ const items: NavItem[] = [
     { href: "/", label: "总览", icon: "dashboard", roles: ["ADMIN", "TEACHER"] },
     { href: "/users", label: "用户管理", icon: "users", roles: ["ADMIN", "TEACHER"] },
     { href: "/points", label: "积分管理", icon: "points", roles: ["ADMIN", "TEACHER"] },
+    { href: "/questions", label: "试题与试卷", icon: "assessment", roles: ["ADMIN", "TEACHER"] },
     { href: "/ai-configs", label: "AI 配置", icon: "bot", roles: ["ADMIN"] },
     { href: "/classrooms", label: "班级管理", icon: "school", roles: ["ADMIN", "TEACHER"] },
     { href: "/classrooms/chat", label: "班级聊天", icon: "chat", roles: ["ADMIN", "TEACHER"] },

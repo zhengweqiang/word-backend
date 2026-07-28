@@ -8,6 +8,12 @@ import { ImportCenterPage } from "@/pages/import-center-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import { OverviewPage } from "@/pages/overview-page";
 import { PointsPage } from "@/pages/points-page";
+import { QuestionBankPage } from "@/pages/question-bank-page";
+import { QuestionImportPage } from "@/pages/question-import-page";
+import { PaperTemplatePage } from "@/pages/paper-template-page";
+import { PaperEditorPage } from "@/pages/paper-editor-page";
+import { PaperReleasePage } from "@/pages/paper-release-page";
+import { PaperResultPage } from "@/pages/paper-result-page";
 import { StudyPlansPage } from "@/pages/study-plans-page";
 import { TeacherClassChatPage } from "@/pages/teacher-class-chat-page";
 import { UsersPage } from "@/pages/users-page";
@@ -22,6 +28,13 @@ function App() {
                     <Route path="/" component={OverviewPage} />
                     <Route path="/users" component={UsersPage} />
                     <Route path="/points" component={PointsPage} />
+                    <Route path="/questions" component={QuestionBankPage} />
+                    <Route path="/questions/import" component={QuestionImportPage} />
+                    <Route path="/papers" component={PaperTemplatePage} />
+                    <Route path="/papers/:paperId/edit" component={PaperEditorPage} />
+                    <Route path="/paper-releases" component={PaperReleasePage} />
+                    <Route path="/paper-results" component={PaperResultPage} />
+                    <Route path="/paper-results/:releaseId" component={PaperResultPage} />
                     <Route path="/ai-configs" component={AiConfigsPage} />
                     <Route path="/classrooms/chat" component={TeacherClassChatPage} />
                     <Route path="/classrooms" component={ClassroomsPage} />

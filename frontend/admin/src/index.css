@@ -39,7 +39,7 @@
         --border: 187 18% 81%;
         --input: 187 18% 81%;
         --ring: 23 82% 58%;
-        --radius: 1rem;
+        --radius: 0.5rem;
     }
 
     * {
@@ -55,7 +55,6 @@
         margin: 0;
         min-width: 320px;
         min-height: 100vh;
-        background-attachment: fixed;
     }
 
     #root {
@@ -67,5 +66,11 @@
     h3,
     h4 {
         @apply font-display;
+    }
+}
+
+@layer components {
+    .assessment-scroll-region {
+        scrollbar-gutter: stable;
     }
 }

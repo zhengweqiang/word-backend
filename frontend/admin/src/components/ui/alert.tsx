@@ -7,7 +7,7 @@ export function Alert(props: JSX.HTMLAttributes<HTMLDivElement>) {
     return (
         <div
             class={cn(
-                "rounded-xl border border-border/80 bg-background/70 p-4 text-sm text-muted-foreground",
+                "rounded-md border border-border/80 bg-background/70 p-4 text-sm text-muted-foreground",
                 local.class,
             )}
             {...rest}

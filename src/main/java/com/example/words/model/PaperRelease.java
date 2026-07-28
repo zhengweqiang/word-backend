@@ -111,6 +111,15 @@ public class PaperRelease {
     @Column(name = "superseded_by_release_id")
     private Long supersededByReleaseId;
 
+    @Column(name = "superseded_at")
+    private LocalDateTime supersededAt;
+
+    @Column(name = "superseded_by_user_id")
+    private Long supersededByUserId;
+
+    @Column(name = "supersede_reason", length = 500)
+    private String supersedeReason;
+
     @Column(name = "show_superseded_to_students", nullable = false)
     private Boolean showSupersededToStudents = false;
 

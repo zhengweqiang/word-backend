@@ -18,6 +18,10 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Arrays;
+import java.lang.reflect.Field;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -92,6 +96,26 @@ class StudentDashboardServiceTest {
         assertEquals(402L, response.getQueue().get(0).getStudyDayTaskItemId());
         assertEquals(401L, response.getQueue().get(1).getStudyDayTaskItemId());
         assertEquals(1, response.getQueue().get(1).getAttemptCount());
+    }
+
+    @Test
+    void dashboardResponseRemainsWordTaskSpecificAfterAssessmentAggregation() {
+        Set<String> fields = Arrays.stream(StudentDashboardResponse.class.getDeclaredFields())
+                .map(Field::getName)
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of(
+                "taskDate",
+                "hasPlans",
+                "allTasksCompleted",
+                "overdueCount",
+                "reviewCount",
+                "newCount",
+                "completedCount",
+                "totalCount",
+                "completionRate",
+                "reminders",
+                "queue"), fields);
     }
 
     private AppUser student() {

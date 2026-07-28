@@ -43,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -140,6 +141,7 @@ class PaperTemplateServiceTest {
         assertEquals(List.of("answer"), response.getQuestions().get(0).getAcceptedAnswers());
         assertEquals(50L, response.getQuestions().get(0).getSourceQuestionId());
         assertEquals(1, response.getQuestions().get(0).getQuestionOrder());
+        verify(paperRepository).findByIdForUpdate(10L);
     }
 
     @Test
@@ -150,6 +152,7 @@ class PaperTemplateServiceTest {
                 .thenReturn(question(50L, QuestionBankItemStatus.ARCHIVED, "Old", "1.00"));
         assertThrows(AccessDeniedException.class, () -> service.addQuestion(
                 10L, new AddPaperQuestionRequest(50L, null), teacher(7L)));
+        verify(paperRepository).findByIdForUpdate(10L);
         verify(paperQuestionRepository, never()).saveAndFlush(any());
     }
 
@@ -173,6 +176,7 @@ class PaperTemplateServiceTest {
                 .map(question -> question.getQuestionOrder()).toList());
         assertThrows(BadRequestException.class, () -> service.reorderQuestions(
                 10L, new ReorderPaperQuestionsRequest(List.of(101L, 101L, 103L)), teacher(7L)));
+        verify(paperRepository, times(2)).findByIdForUpdate(10L);
     }
 
     @Test
@@ -192,6 +196,7 @@ class PaperTemplateServiceTest {
 
         assertEquals(new BigDecimal("5.75"), response.getTotalScore());
         assertEquals(new BigDecimal("4.75"), response.getQuestions().get(1).getScore());
+        verify(paperRepository).findByIdForUpdate(10L);
     }
 
     @Test
@@ -216,7 +221,7 @@ class PaperTemplateServiceTest {
         List<PaperTemplateQuestion> sourceQuestions = List.of(
                 paperQuestion(101L, 10L, 1, "First", "1.25"),
                 paperQuestion(102L, 10L, 2, "Second", "2.75"));
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(source));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(source));
         when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
                 .thenReturn(sourceQuestions);
 
@@ -230,13 +235,14 @@ class PaperTemplateServiceTest {
         assertEquals(new BigDecimal("4.00"), response.getTotalScore());
         assertNotEquals(101L, response.getQuestions().get(0).getId());
         assertEquals("First", response.getQuestions().get(0).getStem());
+        verify(paperRepository).findByIdForUpdate(10L);
     }
 
     @Test
     void generatedCopyTitleNeverExceedsDatabaseLimit() {
         PaperTemplate source = paper(10L, 8L, PaperTemplateStatus.READY);
         source.setTitle("x".repeat(200));
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(source));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(source));
         when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
                 .thenReturn(List.of());
 
@@ -248,34 +254,37 @@ class PaperTemplateServiceTest {
     @Test
     void nonOwnerCannotDirectlyEditPaper() {
         PaperTemplate paper = paper(10L, 8L, PaperTemplateStatus.DRAFT);
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(paper));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
 
         assertThrows(AccessDeniedException.class, () -> service.update(
                 10L, updateRequest("Stolen"), teacher(7L)));
+        verify(paperRepository).findByIdForUpdate(10L);
         verify(paperRepository, never()).saveAndFlush(any());
     }
 
     @Test
     void archivedPaperCannotBeEditedAndOwnerCanArchiveDraft() {
         PaperTemplate archived = paper(10L, 7L, PaperTemplateStatus.ARCHIVED);
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(archived));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(archived));
 
         assertThrows(BadRequestException.class, () -> service.update(
                 10L, updateRequest("No changes"), teacher(7L)));
 
         PaperTemplate draft = paper(11L, 7L, PaperTemplateStatus.DRAFT);
-        when(paperRepository.findById(11L)).thenReturn(Optional.of(draft));
+        when(paperRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(draft));
         service.archive(11L, teacher(7L));
 
         assertEquals(PaperTemplateStatus.ARCHIVED, draft.getStatus());
         assertEquals(NOW, draft.getArchivedAt());
+        verify(paperRepository).findByIdForUpdate(10L);
+        verify(paperRepository).findByIdForUpdate(11L);
     }
 
     @Test
-    void adminCanManageOnlyPapersOwnedBySameAdmin() {
+    void adminCanEditOnlyPapersOwnedBySameAdmin() {
         AppUser admin = user(1L, UserRole.ADMIN);
         PaperTemplate own = paper(10L, 1L, PaperTemplateStatus.DRAFT);
-        when(paperRepository.findById(10L)).thenReturn(Optional.of(own));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(own));
         when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
                 .thenReturn(List.of());
 
@@ -286,9 +295,23 @@ class PaperTemplateServiceTest {
         assertEquals(PaperTemplateStatus.ARCHIVED, own.getStatus());
 
         PaperTemplate other = paper(11L, 2L, PaperTemplateStatus.DRAFT);
-        when(paperRepository.findById(11L)).thenReturn(Optional.of(other));
+        when(paperRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(other));
         assertThrows(AccessDeniedException.class, () -> service.update(
                 11L, updateRequest("Forbidden"), admin));
+        verify(paperRepository, times(2)).findByIdForUpdate(10L);
+        verify(paperRepository).findByIdForUpdate(11L);
+    }
+
+    @Test
+    void adminCanArchiveAnotherTeachersPaper() {
+        PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.READY);
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+
+        service.archive(10L, user(1L, UserRole.ADMIN));
+
+        assertEquals(PaperTemplateStatus.ARCHIVED, paper.getStatus());
+        assertEquals(NOW, paper.getArchivedAt());
+        verify(paperRepository).findByIdForUpdate(10L);
     }
 
     @Test
@@ -304,6 +327,7 @@ class PaperTemplateServiceTest {
 
         assertThrows(BadRequestException.class, () -> service.addQuestion(
                 10L, new AddPaperQuestionRequest(50L, new BigDecimal("0.01")), teacher(7L)));
+        verify(paperRepository).findByIdForUpdate(10L);
         verify(paperRepository, never()).saveAndFlush(paper);
     }
 
@@ -327,7 +351,59 @@ class PaperTemplateServiceTest {
         assertEquals(new BigDecimal("4.00"), response.getTotalScore());
         assertEquals(NOW, questions.get(1).getRemovedAt());
         assertEquals(-1, questions.get(1).getQuestionOrder());
+        verify(paperRepository).findByIdForUpdate(10L);
         verify(paperQuestionRepository, never()).delete(any());
+    }
+
+    @Test
+    void publishingLocksAndReturnsOnlyActiveQuestionSnapshotsForOwner() {
+        PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.READY);
+        List<PaperTemplateQuestion> questions = List.of(
+                paperQuestion(101L, 10L, 1, "First", "1.00"),
+                paperQuestion(102L, 10L, 2, "Second", "2.00"));
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(questions);
+
+        PaperTemplateService.PublicationSource source =
+                service.lockReadyForPublishing(10L, teacher(7L));
+
+        assertEquals(paper, source.paper());
+        assertEquals(List.of(101L, 102L), source.questions().stream()
+                .map(PaperTemplateQuestion::getId).toList());
+        verify(paperRepository).findByIdForUpdate(10L);
+    }
+
+    @Test
+    void publishingAllowsAdministratorToUseAnyReadyPaper() {
+        PaperTemplate paper = paper(10L, 7L, PaperTemplateStatus.READY);
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(paper));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(10L))
+                .thenReturn(List.of(paperQuestion(101L, 10L, 1, "First", "1.00")));
+
+        PaperTemplateService.PublicationSource source =
+                service.lockReadyForPublishing(10L, user(1L, UserRole.ADMIN));
+
+        assertEquals(10L, source.paper().getId());
+    }
+
+    @Test
+    void publishingRejectsOtherTeacherNonReadyAndEmptyPapers() {
+        PaperTemplate ready = paper(10L, 7L, PaperTemplateStatus.READY);
+        PaperTemplate draft = paper(11L, 7L, PaperTemplateStatus.DRAFT);
+        PaperTemplate empty = paper(12L, 7L, PaperTemplateStatus.READY);
+        when(paperRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(ready));
+        when(paperRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(draft));
+        when(paperRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(empty));
+        when(paperQuestionRepository.findByPaperTemplateIdAndRemovedAtIsNullOrderByQuestionOrderAsc(12L))
+                .thenReturn(List.of());
+
+        assertThrows(AccessDeniedException.class, () ->
+                service.lockReadyForPublishing(10L, teacher(8L)));
+        assertThrows(BadRequestException.class, () ->
+                service.lockReadyForPublishing(11L, teacher(7L)));
+        assertThrows(BadRequestException.class, () ->
+                service.lockReadyForPublishing(12L, teacher(7L)));
     }
 
     private CreatePaperTemplateRequest createRequest(String title) {

@@ -5,12 +5,13 @@ import { mergePointTransactions } from '../src/student/point-transactions.ts';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('student navigation replaces the library tab with points and keeps five entries', () => {
+test('student navigation keeps points and adds assessments as a sixth primary entry', () => {
   const workspace = read('src/student/StudentWorkspace.tsx');
   const navBlock = workspace.match(/const navItems = \[([\s\S]*?)\];/)?.[1] ?? '';
 
-  assert.equal((navBlock.match(/label:/g) ?? []).length, 5);
+  assert.equal((navBlock.match(/label:/g) ?? []).length, 6);
   assert.match(navBlock, /id:\s*'points'[\s\S]*label:\s*'积分'/);
+  assert.match(navBlock, /id:\s*'assessments'[\s\S]*label:\s*'测验'/);
   assert.doesNotMatch(navBlock, /id:\s*'library'[\s\S]*label:\s*'词库'/);
   assert.match(workspace, /<StudentPoints\b/);
   assert.match(workspace, /tab === 'library' \? '词库'/);

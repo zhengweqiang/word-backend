@@ -126,6 +126,7 @@ function App() {
   const [activeExam, setActiveExam] = useState<Exam | null>(null);
   const [examAnswers, setExamAnswers] = useState<Record<number, string>>({});
   const [examResult, setExamResult] = useState<ExamSubmissionResult | null>(null);
+  const [studentAssessmentRefreshToken, setStudentAssessmentRefreshToken] = useState(0);
 
   const DICT_PAGE_SIZE = 6;
   const WORD_PAGE_SIZE = 10;
@@ -992,6 +993,7 @@ function App() {
 
       const result = await examApi.submit(activeExam.examId, answers);
       setExamResult(result);
+      setStudentAssessmentRefreshToken((current) => current + 1);
 
       if (selectedDictionary) {
         const historyItems = await examApi.getHistory(selectedDictionary.id);
@@ -1022,6 +1024,25 @@ function App() {
       setExamLoading(false);
     }
   }, []);
+
+  const handleOpenStudentLegacyExam = useCallback(async (examId: number) => {
+    setExamLoading(true);
+    setExamError(null);
+    try {
+      const exam = await examApi.getById(examId);
+      const result = exam.status === 'SUBMITTED' ? await examApi.getResult(examId) : null;
+      setSelectedDictionary(dictionaries.find((dictionary) => dictionary.id === exam.dictionaryId) ?? null);
+      setActiveExam(exam);
+      setExamResult(result);
+      setExamAnswers({});
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '加载词库测验失败';
+      setExamError(message);
+      throw new Error(message);
+    } finally {
+      setExamLoading(false);
+    }
+  }, [dictionaries]);
 
   const handleCloseExam = useCallback(() => {
     setActiveExam(null);
@@ -1068,11 +1089,27 @@ function App() {
 
   if (isStudent) {
     return (
-      <StudentWorkspace
-        user={currentUser}
-        dictionaries={dictionaries}
-        onSignOut={handleSignOut}
-      />
+      <>
+        <StudentWorkspace
+          user={currentUser}
+          dictionaries={dictionaries}
+          onSignOut={handleSignOut}
+          onOpenLegacyExam={handleOpenStudentLegacyExam}
+          assessmentRefreshToken={studentAssessmentRefreshToken}
+        />
+        <ExamSessionModal
+          isOpen={activeExam !== null}
+          dictionary={selectedDictionary}
+          exam={activeExam}
+          selectedAnswers={examAnswers}
+          result={examResult}
+          loading={examLoading}
+          error={examError}
+          onClose={handleCloseExam}
+          onSelectOption={handleSelectExamOption}
+          onSubmit={handleSubmitExam}
+        />
+      </>
     );
   }
 

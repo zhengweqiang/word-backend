@@ -22,6 +22,8 @@ class ExamPaperPostgresMigrationIntegrationTest {
     private static final String MIGRATION_PATH = "db/migration/V39__create_exam_paper_management.sql";
     private static final String SOFT_REMOVAL_MIGRATION_PATH =
             "db/migration/V39_2__soft_remove_paper_template_questions.sql";
+    private static final String RELEASE_CORRECTION_MIGRATION_PATH =
+            "db/migration/V39_3__add_paper_release_correction_audit.sql";
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
@@ -36,6 +38,30 @@ class ExamPaperPostgresMigrationIntegrationTest {
             statement.execute("INSERT INTO users (id) VALUES (1), (2)");
             ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION_PATH));
             ScriptUtils.executeSqlScript(connection, new ClassPathResource(SOFT_REMOVAL_MIGRATION_PATH));
+            statement.execute("INSERT INTO classrooms (id) VALUES (31)");
+            statement.execute("INSERT INTO paper_templates (id, title, owner_user_id) "
+                    + "VALUES (900, 'Migration trace', 1)");
+            statement.execute("INSERT INTO paper_releases (id, paper_template_id, title, published_by_user_id) "
+                    + "VALUES (900, 900, 'Migration trace release', 1)");
+            statement.execute("INSERT INTO paper_release_targets "
+                    + "(id, paper_release_id, student_id, source_classroom_id, targeted_by_user_id) "
+                    + "VALUES (900, 900, 2, 31, 1)");
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource(RELEASE_CORRECTION_MIGRATION_PATH));
+        }
+    }
+
+    @Test
+    void correctionMigrationBackfillsClassroomTraceAndRestrictsSupersedingActor() throws SQLException {
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            try (var trace = statement.executeQuery("""
+                    SELECT source_classroom_ids_json FROM paper_release_targets WHERE id = 900
+                    """)) {
+                trace.next();
+                assertEquals("[31]", trace.getString(1));
+            }
+            assertForeignKeyViolation(() -> executeUpdate(connection, """
+                    UPDATE paper_releases SET superseded_by_user_id = 999 WHERE id = 900
+                    """));
         }
     }
 

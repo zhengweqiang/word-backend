@@ -23,6 +23,21 @@ import type {
     LoginResponse,
     MetaWordEntryPayload,
     MetaWordSuggestionResponse,
+    PaperReleaseQuestionStatResponse,
+    PaperReleaseResponse,
+    PaperReleaseResultOverviewResponse,
+    PaperReleaseStudentResultResponse,
+    PaperResultVisibility,
+    PaperTemplateResponse,
+    EditablePaperTemplateStatus,
+    PaperTemplateStatus,
+    PublishPaperPayload,
+    QuestionBankItemResponse,
+    QuestionImportConfirmResponse,
+    QuestionImportPreviewResponse,
+    QuestionPayload,
+    QuestionStatus,
+    QuestionType,
     PaginatedResponse,
     AdminStudentPointAccountResponse,
     PointEventStatus,
@@ -339,6 +354,72 @@ export const api = {
         request<StudyPlanOverviewResponse>(`/api/study-plans/${planId}/overview`),
     getStudyPlanStudents: (planId: number) =>
         request<StudyPlanStudentSummaryResponse[]>(`/api/study-plans/${planId}/students`),
+
+    listQuestions: (params: {
+        page?: number; size?: number; keyword?: string; questionType?: QuestionType;
+        status?: QuestionStatus; tag?: string; dictionaryId?: number; metaWordId?: number; creatorId?: number;
+    }) => request<PaginatedResponse<QuestionBankItemResponse>>(
+        `/api/teacher/questions${buildQueryString(params)}`,
+    ),
+    createQuestion: (payload: QuestionPayload) =>
+        request<QuestionBankItemResponse>("/api/teacher/questions", { method: "POST", body: payload }),
+    updateQuestion: (questionId: number, payload: QuestionPayload) =>
+        request<QuestionBankItemResponse>(`/api/teacher/questions/${questionId}`, { method: "PUT", body: payload }),
+    copyQuestion: (questionId: number, payload?: { stem?: string }) =>
+        request<QuestionBankItemResponse>(`/api/teacher/questions/${questionId}/copy`, { method: "POST", body: payload ?? {} }),
+    archiveQuestion: (questionId: number) =>
+        request<void>(`/api/teacher/questions/${questionId}/archive`, { method: "PATCH" }),
+
+    previewQuestionImport: (file: File) => {
+        const body = new FormData();
+        body.append("file", file);
+        return request<QuestionImportPreviewResponse>("/api/teacher/question-imports/preview", { method: "POST", body });
+    },
+    getQuestionImport: (batchId: number) =>
+        request<QuestionImportPreviewResponse>(`/api/teacher/question-imports/${batchId}`),
+    confirmQuestionImport: (batchId: number, payload: { selectedRowIds: number[] }) =>
+        request<QuestionImportConfirmResponse>(`/api/teacher/question-imports/${batchId}/confirm`, { method: "POST", body: payload }),
+
+    listPapers: (params: { page?: number; size?: number; keyword?: string; status?: PaperTemplateStatus; ownerUserId?: number }) =>
+        request<PaginatedResponse<PaperTemplateResponse>>(`/api/teacher/papers${buildQueryString(params)}`),
+    createPaper: (payload: { title: string; instructions?: string; shuffleQuestions: boolean; shuffleOptions: boolean }) =>
+        request<PaperTemplateResponse>("/api/teacher/papers", { method: "POST", body: payload }),
+    updatePaper: (paperId: number, payload: {
+        title: string; instructions?: string; shuffleQuestions: boolean; shuffleOptions: boolean; status: EditablePaperTemplateStatus;
+    }) => request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}`, { method: "PUT", body: payload }),
+    getPaperPreview: (paperId: number) => request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}/preview`),
+    copyPaper: (paperId: number, payload?: { title?: string }) =>
+        request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}/copy`, { method: "POST", body: payload ?? {} }),
+    archivePaper: (paperId: number) => request<void>(`/api/teacher/papers/${paperId}/archive`, { method: "PATCH" }),
+    addPaperQuestion: (paperId: number, payload: { questionId: number; score: number }) =>
+        request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}/questions`, { method: "POST", body: payload }),
+    reorderPaperQuestions: (paperId: number, payload: { paperQuestionIds: number[] }) =>
+        request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}/questions/reorder`, { method: "PUT", body: payload }),
+    updatePaperQuestionScore: (paperId: number, paperQuestionId: number, payload: { score: number }) =>
+        request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}/questions/${paperQuestionId}/score`, { method: "PATCH", body: payload }),
+    removePaperQuestion: (paperId: number, paperQuestionId: number) =>
+        request<PaperTemplateResponse>(`/api/teacher/papers/${paperId}/questions/${paperQuestionId}`, { method: "DELETE" }),
+
+    listPaperReleases: () => request<PaperReleaseResponse[]>("/api/teacher/paper-releases"),
+    getPaperRelease: (releaseId: number) => request<PaperReleaseResponse>(`/api/teacher/paper-releases/${releaseId}`),
+    publishPaper: (payload: PublishPaperPayload) =>
+        request<PaperReleaseResponse>("/api/teacher/paper-releases", { method: "POST", body: payload }),
+    withdrawPaperRelease: (releaseId: number, payload: { reason: string }) =>
+        request<PaperReleaseResponse>(`/api/teacher/paper-releases/${releaseId}/withdraw`, { method: "POST", body: payload }),
+    invalidatePaperRelease: (releaseId: number, payload: { reason: string }) =>
+        request<PaperReleaseResponse>(`/api/teacher/paper-releases/${releaseId}/invalidate`, { method: "POST", body: payload }),
+    supersedePaperRelease: (releaseId: number, payload: {
+        reason: string; startTime?: string; deadline?: string; blankAnswerPolicy?: "ALLOW_BLANK" | "REQUIRE_ALL_ANSWERED";
+        resultVisibility?: PaperResultVisibility; showOriginalToStudents: boolean;
+    }) => request<PaperReleaseResponse>(`/api/teacher/paper-releases/${releaseId}/supersede`, { method: "POST", body: payload }),
+    getPaperReleaseResults: (releaseId: number) =>
+        request<PaperReleaseResultOverviewResponse>(`/api/teacher/paper-releases/${releaseId}/results`),
+    getPaperReleaseStudentResult: (releaseId: number, attemptId: number) =>
+        request<PaperReleaseStudentResultResponse>(`/api/teacher/paper-releases/${releaseId}/results/students/${attemptId}`),
+    getPaperReleaseQuestionStats: (releaseId: number) =>
+        request<PaperReleaseQuestionStatResponse[]>(`/api/teacher/paper-releases/${releaseId}/results/questions`),
+    releasePaperResults: (releaseId: number, payload: { resultVisibility: PaperResultVisibility }) =>
+        request<PaperReleaseResultOverviewResponse>(`/api/teacher/paper-releases/${releaseId}/results/release`, { method: "POST", body: payload }),
 
     createImportBatch: () => request<BooksImportJobResponse>("/api/books-import/batches", { method: "POST" }),
     getLatestImportBatch: () => request<BooksImportJobResponse>("/api/books-import/batches/latest"),

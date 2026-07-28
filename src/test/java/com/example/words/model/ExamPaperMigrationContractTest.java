@@ -19,6 +19,8 @@ class ExamPaperMigrationContractTest {
     private static final String MIGRATION_PATH = "db/migration/V39__create_exam_paper_management.sql";
     private static final String SOFT_REMOVAL_MIGRATION_PATH =
             "db/migration/V39_2__soft_remove_paper_template_questions.sql";
+    private static final String RELEASE_CORRECTION_MIGRATION_PATH =
+            "db/migration/V39_3__add_paper_release_correction_audit.sql";
 
     @Test
     void v39BindsEachAnswerAttemptAndQuestionToTheSameReleaseWithRestrictiveForeignKeys() throws Exception {
@@ -63,6 +65,26 @@ class ExamPaperMigrationContractTest {
         assertEquals("removed_at", column.name());
     }
 
+    @Test
+    void v39ThreePersistsAllClassroomSourcesAndSupersessionAuditWithRestrictiveForeignKey()
+            throws Exception {
+        String migration = readMigration(RELEASE_CORRECTION_MIGRATION_PATH);
+        String normalized = migration.replaceAll("\\s+", " ").toUpperCase();
+
+        assertTrue(normalized.contains("ADD COLUMN SOURCE_CLASSROOM_IDS_JSON TEXT NOT NULL DEFAULT '[]'"));
+        assertTrue(normalized.contains("ADD COLUMN SUPERSEDED_AT TIMESTAMP"));
+        assertTrue(normalized.contains("ADD COLUMN SUPERSEDED_BY_USER_ID BIGINT"));
+        assertTrue(normalized.contains("ADD COLUMN SUPERSEDE_REASON VARCHAR(500)"));
+        assertTrue(normalized.contains(
+                "FOREIGN KEY (SUPERSEDED_BY_USER_ID) REFERENCES USERS(ID) ON DELETE RESTRICT"));
+        assertFalse(normalized.contains("ON DELETE CASCADE"));
+
+        assertEquals("source_classroom_ids_json", columnName(
+                PaperReleaseTarget.class, "sourceClassroomIdsJson"));
+        assertEquals("superseded_by_user_id", columnName(PaperRelease.class, "supersededByUserId"));
+        assertEquals("supersede_reason", columnName(PaperRelease.class, "supersedeReason"));
+    }
+
     private String readMigration() throws IOException {
         return readMigration(MIGRATION_PATH);
     }
@@ -84,5 +106,11 @@ class ExamPaperMigrationContractTest {
         }
         throw new AssertionError(entityType.getSimpleName() + " must declare unique columns "
                 + java.util.Arrays.toString(columnNames));
+    }
+
+    private String columnName(Class<?> entityType, String fieldName) throws NoSuchFieldException {
+        Column column = entityType.getDeclaredField(fieldName).getAnnotation(Column.class);
+        assertNotNull(column);
+        return column.name();
     }
 }

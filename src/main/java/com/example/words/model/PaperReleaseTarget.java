@@ -49,6 +49,9 @@ public class PaperReleaseTarget {
     @Column(name = "source_classroom_id")
     private Long sourceClassroomId;
 
+    @Column(name = "source_classroom_ids_json", nullable = false, columnDefinition = "TEXT")
+    private String sourceClassroomIdsJson = "[]";
+
     @Column(name = "targeted_by_user_id", nullable = false)
     private Long targetedByUserId;
 

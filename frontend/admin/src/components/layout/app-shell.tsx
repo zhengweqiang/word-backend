@@ -13,6 +13,7 @@ import {
     MessageSquare,
     School,
     ShieldCheck,
+    ClipboardList,
     Users,
 } from "lucide-solid";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ const navigationIcons = {
     cloud: Cloud,
     calendar: CalendarRange,
     import: DatabaseZap,
+    assessment: ClipboardList,
 };
 
 interface AppShellProps {
@@ -52,9 +54,9 @@ export function AppShell(props: AppShellProps) {
     };
 
     return (
-        <div class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(240,180,80,0.22),_transparent_28%),linear-gradient(180deg,_#fffdf8_0%,_#f3f7f7_38%,_#e8f1f0_100%)] text-foreground">
-            <div class="mx-auto grid min-h-screen max-w-[1600px] gap-6 px-4 py-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-6">
-                <aside class="rounded-[32px] border border-border/60 bg-[#0f2730] p-5 text-white shadow-haze">
+        <div class="min-h-screen bg-background text-foreground">
+            <div class="grid min-h-screen lg:grid-cols-[252px_minmax(0,1fr)]">
+                <aside class="border-r border-white/10 bg-[#17323a] p-4 text-white">
                     <div class="space-y-4">
                         <div class="space-y-3">
                             <Badge class="border-white/15 bg-white/10 text-white" variant="outline">
@@ -68,9 +70,9 @@ export function AppShell(props: AppShellProps) {
                             </div>
                         </div>
 
-                        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div class="rounded-md border border-white/10 bg-white/5 p-3">
                             <div class="flex items-center gap-3">
-                                <div class="rounded-2xl bg-white/10 p-3">
+                                <div class="rounded-md bg-white/10 p-2">
                                     <ShieldCheck class="h-5 w-5" />
                                 </div>
                                 <div>
@@ -94,7 +96,7 @@ export function AppShell(props: AppShellProps) {
                                         <A
                                             href={item.href}
                                             class={cn(
-                                                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-all",
+                                                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
                                                 isActive()
                                                     ? "bg-white text-[#0f2730] shadow-lg"
                                                     : "text-white/72 hover:bg-white/10 hover:text-white",
@@ -117,7 +119,7 @@ export function AppShell(props: AppShellProps) {
                     </div>
                 </aside>
 
-                <main class="space-y-6 rounded-[32px] border border-border/60 bg-white/70 p-4 shadow-haze backdrop-blur md:p-6">
+                <main class="min-w-0 space-y-6 bg-background p-4 md:p-6 xl:p-8">
                     {props.children}
                 </main>
             </div>

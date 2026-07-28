@@ -22,6 +22,7 @@ import com.example.words.repository.StudentPointEventRepository;
 import com.example.words.repository.StudentPointRuleAuditRepository;
 import com.example.words.repository.StudentPointRuleRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -108,7 +109,7 @@ class StudentPointRuleServiceTest {
 
         assertEquals("IMMUTABLE_CODE", updated.getCode());
         assertEquals("新名称", updated.getName());
-        assertEquals(2, updated.getBasePoints());
+        assertEquals(BigDecimal.valueOf(2), updated.getBasePoints());
         assertFalse(updated.getEnabled());
     }
 
@@ -142,6 +143,32 @@ class StudentPointRuleServiceTest {
                         "GLOBAL", null, true, "test")));
         assertEquals("POINT_RULE_SOURCE_NOT_CONFIGURABLE", correctionFailure.getCode());
         verify(ruleRepository, never()).save(any());
+    }
+
+    @Test
+    void paperReleaseAttemptSourceCanBeConfiguredWithoutCreatingADefaultRule() {
+        PointSourceType paperAttemptSource = PointSourceType.valueOf("PAPER_RELEASE_ATTEMPT");
+        when(ruleRepository.findByCode("PAPER_SUBMITTED_ON_TIME")).thenReturn(Optional.empty());
+        when(ruleRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            StudentPointRule rule = invocation.getArgument(0);
+            rule.setId(8L);
+            return rule;
+        });
+
+        StudentPointRule saved = service.create(admin(), new StudentPointRuleCreateRequest(
+                "PAPER_SUBMITTED_ON_TIME",
+                "按时提交试卷",
+                "由管理员按需配置，不提供默认规则",
+                paperAttemptSource,
+                5,
+                "GLOBAL",
+                null,
+                true,
+                "启用试卷提交奖励"
+        ));
+
+        assertEquals(paperAttemptSource, saved.getSourceType());
+        assertEquals("PAPER_SUBMITTED_ON_TIME", saved.getCode());
     }
 
     @Test
