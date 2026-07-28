@@ -1,32 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, Coins, House, UserCircle, UsersThree } from '@phosphor-icons/react';
+import { BookOpen, Coins, Exam, House, UserCircle, UsersThree } from '@phosphor-icons/react';
 import { studentDashboardApi } from '../api';
 import type { Dictionary, StudentDashboard, User } from '../types';
 import { StudentClassrooms } from './StudentClassrooms';
 import { StudentDashboardHome } from './StudentDashboardHome';
+import { StudentAssignedPapers } from './StudentAssignedPapers';
 import { StudentLibrary } from './StudentLibrary';
 import { StudentPoints } from './StudentPoints';
 import { StudentProfile } from './StudentProfile';
 import { StudentStudySession } from './StudentStudySession';
 import './student-workspace.css';
 
-type StudentTab = 'home' | 'study' | 'points' | 'classrooms' | 'profile' | 'library';
+type StudentTab = 'home' | 'study' | 'assessments' | 'points' | 'classrooms' | 'profile' | 'library';
 
 interface StudentWorkspaceProps {
   user: User;
   dictionaries: Dictionary[];
   onSignOut: () => void;
+  onOpenLegacyExam: (examId: number) => Promise<void>;
+  assessmentRefreshToken: number;
 }
 
 const navItems = [
   { id: 'home' as const, label: '首页', icon: House },
   { id: 'study' as const, label: '学习', icon: BookOpen },
+  { id: 'assessments' as const, label: '测验', icon: Exam },
   { id: 'points' as const, label: '积分', icon: Coins },
   { id: 'classrooms' as const, label: '班级', icon: UsersThree },
   { id: 'profile' as const, label: '我的', icon: UserCircle },
 ];
 
-export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorkspaceProps) {
+export function StudentWorkspace({
+  user,
+  dictionaries,
+  onSignOut,
+  onOpenLegacyExam,
+  assessmentRefreshToken,
+}: StudentWorkspaceProps) {
   const [tab, setTab] = useState<StudentTab>('home');
   const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,7 +79,7 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
           {loading && (tab === 'home' || tab === 'study') && (
             <div className="student-loading"><span />正在整理今日任务...</div>
           )}
-          {error && (
+          {error && (tab === 'home' || tab === 'study') && (
             <div className="student-load-error" role="alert">
               <p>{error}</p>
               <button type="button" onClick={() => void loadDashboard()}>重新加载</button>
@@ -92,6 +102,12 @@ export function StudentWorkspace({ user, dictionaries, onSignOut }: StudentWorks
             />
           )}
           {tab === 'library' && <StudentLibrary dictionaries={dictionaries} initialDictionaryId={libraryDictionaryId} />}
+          {tab === 'assessments' && (
+            <StudentAssignedPapers
+              onOpenLegacyExam={onOpenLegacyExam}
+              refreshToken={assessmentRefreshToken}
+            />
+          )}
           {tab === 'points' && <StudentPoints />}
           {tab === 'classrooms' && (
             <StudentClassrooms

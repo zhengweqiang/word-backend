@@ -38,7 +38,7 @@ const tabs: { value: AdminTab; label: string }[] = [
     { value: "rules", label: "规则" },
 ];
 const eventStatuses: ("ALL" | PointEventStatus)[] = ["ALL", "PENDING", "PROCESSING", "SUCCEEDED", "FAILED", "CANCELLED"];
-const sourceTypes: PointSourceType[] = ["STUDY_TASK", "STUDY_RECORD", "CLASSROOM_CHAT", "VIDEO_WATCH", "EXAM", "REDEMPTION"];
+const sourceTypes: PointSourceType[] = ["STUDY_TASK", "STUDY_RECORD", "CLASSROOM_CHAT", "VIDEO_WATCH", "EXAM", "PAPER_RELEASE_ATTEMPT", "REDEMPTION"];
 type RuleScopeType = "GLOBAL" | "CLASSROOM" | "STUDY_PLAN" | "EXAM";
 const ruleScopeTypes: RuleScopeType[] = ["GLOBAL", "CLASSROOM", "STUDY_PLAN", "EXAM"];
 
@@ -48,6 +48,7 @@ const sourceTypeLabels: Record<PointSourceType, string> = {
     CLASSROOM_CHAT: "班级聊天",
     VIDEO_WATCH: "视频观看",
     EXAM: "考试",
+    PAPER_RELEASE_ATTEMPT: "试卷作答",
     MANUAL_ADJUSTMENT: "人工调整",
     ADMIN_CORRECTION: "管理员冲正",
     REDEMPTION: "积分兑换",

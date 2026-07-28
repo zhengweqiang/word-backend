@@ -394,6 +394,147 @@ export interface ExamHistoryItem {
   submittedAt?: string;
 }
 
+export type PaperQuestionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'FILL_IN_BLANK';
+
+export type PaperReleaseStatus = 'SCHEDULED' | 'OPEN' | 'WITHDRAWN' | 'INVALIDATED' | 'SUPERSEDED';
+
+export type StudentPaperAttemptStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'SUBMITTED'
+  | 'OVERDUE'
+  | 'SUBMITTED_LATE'
+  | 'INVALIDATED';
+
+export type PaperBlankAnswerPolicy = 'ALLOW_BLANK' | 'REQUIRE_ALL_ANSWERED';
+
+export interface StudentAssignedPaperSummary {
+  attemptId: number;
+  releaseId: number;
+  title: string;
+  instructions?: string | null;
+  releaseStatus: PaperReleaseStatus;
+  attemptStatus: StudentPaperAttemptStatus;
+  questionCount: number;
+  totalScore: number;
+  startTime?: string | null;
+  deadline?: string | null;
+  answerable: boolean;
+  resultAvailable: boolean;
+}
+
+export interface StudentPaperQuestion {
+  id: number;
+  questionOrder: number;
+  questionType: PaperQuestionType;
+  stem: string;
+  options: Record<string, string>;
+  score: number;
+}
+
+export interface StudentPaperAnswer {
+  releaseQuestionId: number;
+  selectedAnswers: string[];
+  blankAnswers: string[];
+}
+
+export interface StudentPaperAttempt {
+  attemptId: number;
+  releaseId: number;
+  title: string;
+  instructions?: string | null;
+  releaseStatus: PaperReleaseStatus;
+  attemptStatus: StudentPaperAttemptStatus;
+  version: number;
+  questionCount: number;
+  totalScore: number;
+  startTime?: string | null;
+  deadline?: string | null;
+  blankAnswerPolicy: PaperBlankAnswerPolicy;
+  answerable: boolean;
+  questions: StudentPaperQuestion[];
+  answers: StudentPaperAnswer[];
+}
+
+export interface StudentPaperAnswerPayload {
+  releaseQuestionId: number;
+  selectedAnswers: string[];
+  blankAnswers: string[];
+}
+
+export interface StudentPaperResultQuestion {
+  releaseQuestionId: number;
+  questionOrder: number;
+  questionType: PaperQuestionType;
+  stem: string;
+  options: Record<string, string>;
+  selectedAnswers: string[];
+  blankAnswers: string[];
+  correct: boolean;
+  earnedScore: number;
+  questionScore: number;
+  acceptedAnswers: string[];
+  explanation?: string | null;
+}
+
+export interface StudentPaperResult {
+  attemptId: number;
+  releaseId: number;
+  status: Extract<StudentPaperAttemptStatus, 'SUBMITTED' | 'SUBMITTED_LATE'>;
+  submittedAt: string;
+  scoreVisible: boolean;
+  answersVisible: boolean;
+  earnedScore?: number | null;
+  totalScore?: number | null;
+  scorePercentage?: number | null;
+  answeredCount?: number | null;
+  correctCount?: number | null;
+  questions: StudentPaperResultQuestion[];
+}
+
+export interface SubmitStudentPaperResponse {
+  attemptId: number;
+  status: Extract<StudentPaperAttemptStatus, 'SUBMITTED' | 'SUBMITTED_LATE'>;
+  version: number;
+  submittedAt: string;
+  idempotent: boolean;
+  result: StudentPaperResult;
+}
+
+export type StudentAssessmentType = 'LEGACY_GENERATED_EXAM' | 'PAPER_RELEASE_ATTEMPT';
+
+export type StudentAssessmentStatus =
+  | 'SCHEDULED'
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'OVERDUE'
+  | 'SUBMITTED'
+  | 'SUBMITTED_LATE';
+
+export interface StudentAssessmentSummary {
+  assessmentType: StudentAssessmentType;
+  status: StudentAssessmentStatus;
+  assessmentId: number;
+  legacyExamId?: number | null;
+  paperAttemptId?: number | null;
+  paperReleaseId?: number | null;
+  dictionaryId?: number | null;
+  paperTemplateId?: number | null;
+  title: string;
+  questionCount: number;
+  answeredCount: number;
+  scoreVisible: boolean;
+  correctCount?: number | null;
+  earnedScore?: number | null;
+  totalScore?: number | null;
+  scorePercentage?: number | null;
+  assignedAt?: string | null;
+  startTime?: string | null;
+  deadline?: string | null;
+  createdAt?: string | null;
+  submittedAt?: string | null;
+}
+
 export type ReviewMode = 'EBBINGHAUS' | 'FIXED_INTERVAL' | 'CUSTOM';
 
 export type StudyPlanStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'COMPLETED' | 'ARCHIVED';

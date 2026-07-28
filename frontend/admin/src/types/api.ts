@@ -68,6 +68,7 @@ export type PointSourceType =
     | "CLASSROOM_CHAT"
     | "VIDEO_WATCH"
     | "EXAM"
+    | "PAPER_RELEASE_ATTEMPT"
     | "MANUAL_ADJUSTMENT"
     | "ADMIN_CORRECTION"
     | "REDEMPTION";
@@ -632,4 +633,228 @@ export interface GenerateDictionaryWordWithAiResponse {
     created: number;
     added: number;
     failed: number;
+}
+
+export type QuestionType = "SINGLE_CHOICE" | "MULTIPLE_CHOICE" | "FILL_IN_BLANK";
+export type QuestionStatus = "DRAFT" | "ACTIVE" | "ARCHIVED";
+export type QuestionImportBatchStatus = "PREVIEWED" | "CONFIRMED" | "EXPIRED";
+export type QuestionImportRowStatus = "VALID" | "INVALID" | "DUPLICATE_CANDIDATE";
+export type PaperTemplateStatus = "DRAFT" | "READY" | "ARCHIVED";
+export type EditablePaperTemplateStatus = Exclude<PaperTemplateStatus, "ARCHIVED">;
+export type PaperReleaseStatus = "SCHEDULED" | "OPEN" | "WITHDRAWN" | "INVALIDATED" | "SUPERSEDED";
+export type PaperBlankAnswerPolicy = "ALLOW_BLANK" | "REQUIRE_ALL_ANSWERED";
+export type PaperResultVisibility = "HIDDEN_UNTIL_RELEASED" | "SCORE_ONLY" | "SCORE_AND_ANSWERS";
+export type StudentPaperAttemptStatus =
+    | "NOT_STARTED"
+    | "IN_PROGRESS"
+    | "OVERDUE"
+    | "SUBMITTED"
+    | "SUBMITTED_LATE"
+    | "INVALIDATED";
+
+export interface QuestionPayload {
+    questionType: QuestionType;
+    stem: string;
+    options?: Record<string, string>;
+    acceptedAnswers: string[];
+    defaultScore: number;
+    difficulty?: number;
+    tags?: string[];
+    explanation?: string;
+    dictionaryId?: number;
+    metaWordId?: number;
+    status: QuestionStatus;
+}
+
+export interface QuestionBankItemResponse extends QuestionPayload {
+    id: number;
+    sourceQuestionId?: number | null;
+    importBatchId?: number | null;
+    createdByUserId: number;
+    importedByUserId?: number | null;
+    lastModifiedByUserId?: number | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    archivedAt?: string | null;
+}
+
+export interface QuestionImportPreviewRowResponse {
+    id: number;
+    rowNumber: number;
+    status: QuestionImportRowStatus;
+    questionType?: QuestionType | null;
+    stem?: string | null;
+    options?: Record<string, string> | null;
+    acceptedAnswers?: string[] | null;
+    score?: number | null;
+    difficulty?: number | null;
+    tags?: string[] | null;
+    explanation?: string | null;
+    dictionaryName?: string | null;
+    word?: string | null;
+    dictionaryId?: number | null;
+    metaWordId?: number | null;
+    message?: string | null;
+    duplicateQuestionId?: number | null;
+    rawRow?: Record<string, unknown> | null;
+}
+
+export interface QuestionImportPreviewResponse {
+    batchId: number;
+    fileName: string;
+    totalRows: number;
+    validRows: number;
+    invalidRows: number;
+    duplicateRows: number;
+    status: QuestionImportBatchStatus;
+    expiresAt?: string | null;
+    rows: QuestionImportPreviewRowResponse[];
+}
+
+export interface QuestionImportConfirmResponse {
+    batchId: number;
+    importedCount: number;
+    importedQuestionIds: number[];
+    status: QuestionImportBatchStatus;
+    confirmedAt?: string | null;
+}
+
+export interface PaperTemplateQuestionResponse {
+    id: number;
+    sourceQuestionId: number;
+    questionOrder: number;
+    questionType: QuestionType;
+    stem: string;
+    options?: Record<string, string> | null;
+    acceptedAnswers: string[];
+    explanation?: string | null;
+    score: number;
+    dictionaryId?: number | null;
+    metaWordId?: number | null;
+    createdAt?: string | null;
+}
+
+export interface PaperTemplateResponse {
+    id: number;
+    title: string;
+    instructions?: string | null;
+    ownerUserId: number;
+    sourcePaperId?: number | null;
+    status: PaperTemplateStatus;
+    shuffleQuestions: boolean;
+    shuffleOptions: boolean;
+    totalScore: number;
+    questionCount: number;
+    questions: PaperTemplateQuestionResponse[];
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    archivedAt?: string | null;
+}
+
+export interface PaperReleaseTargetResponse {
+    id: number;
+    studentId: number;
+    sourceClassroomIds: number[];
+    attemptId?: number | null;
+    attemptStatus?: StudentPaperAttemptStatus | null;
+}
+
+export interface PaperReleaseResponse {
+    id: number;
+    paperTemplateId: number;
+    title: string;
+    instructions?: string | null;
+    publishedByUserId: number;
+    status: PaperReleaseStatus;
+    questionCount: number;
+    totalScore: number;
+    shuffleQuestions: boolean;
+    shuffleOptions: boolean;
+    startTime?: string | null;
+    deadline?: string | null;
+    blankAnswerPolicy: PaperBlankAnswerPolicy;
+    resultVisibility: PaperResultVisibility;
+    withdrawnAt?: string | null;
+    withdrawnByUserId?: number | null;
+    withdrawReason?: string | null;
+    invalidatedAt?: string | null;
+    invalidatedByUserId?: number | null;
+    invalidateReason?: string | null;
+    supersedesReleaseId?: number | null;
+    supersededByReleaseId?: number | null;
+    supersededAt?: string | null;
+    supersededByUserId?: number | null;
+    supersedeReason?: string | null;
+    showSupersededToStudents?: boolean | null;
+    createdAt?: string | null;
+    targets: PaperReleaseTargetResponse[];
+}
+
+export interface PublishPaperPayload {
+    paperId: number;
+    studentIds: number[];
+    classroomIds: number[];
+    startTime?: string;
+    deadline?: string;
+    blankAnswerPolicy: PaperBlankAnswerPolicy;
+    resultVisibility: PaperResultVisibility;
+}
+
+export interface PaperReleaseStudentResultResponse {
+    releaseId: number;
+    attemptId: number;
+    studentId: number;
+    status: StudentPaperAttemptStatus;
+    late: boolean;
+    answeredCount: number;
+    correctCount: number;
+    earnedScore: number;
+    totalScore: number;
+    scorePercentage?: number | null;
+    submittedAt?: string | null;
+    questions: StudentPaperResultQuestionResponse[];
+}
+
+export interface StudentPaperResultQuestionResponse {
+    releaseQuestionId: number;
+    questionOrder: number;
+    questionType: QuestionType;
+    stem: string;
+    options?: Record<string, string> | null;
+    selectedAnswers: string[];
+    blankAnswers: string[];
+    correct?: boolean | null;
+    earnedScore?: number | null;
+    questionScore: number;
+    acceptedAnswers: string[];
+    explanation?: string | null;
+}
+
+export interface PaperReleaseResultOverviewResponse {
+    releaseId: number;
+    title: string;
+    releaseStatus: PaperReleaseStatus;
+    assignedCount: number;
+    notStartedCount: number;
+    inProgressCount: number;
+    overdueCount: number;
+    submittedCount: number;
+    submittedLateCount: number;
+    completedCount: number;
+    resultVisibility: PaperResultVisibility;
+    resultsReleased: boolean;
+    resultsReleasedAt?: string | null;
+    resultsReleasedByUserId?: number | null;
+    students: PaperReleaseStudentResultResponse[];
+}
+
+export interface PaperReleaseQuestionStatResponse {
+    releaseQuestionId: number;
+    questionOrder: number;
+    questionType: QuestionType;
+    stem: string;
+    submissionCount: number;
+    answeredCount: number;
+    correctCount: number;
+    correctnessRate: number;
 }

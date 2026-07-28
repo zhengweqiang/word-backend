@@ -13,6 +13,7 @@ import com.example.words.model.PointEventStatus;
 import com.example.words.model.PointSourceType;
 import com.example.words.model.StudentPointEvent;
 import com.example.words.repository.StudentPointEventRepository;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,7 +97,7 @@ class StudentPointEventServiceTest {
 
             assertSame(existing, replayed);
             assertEquals("旧规则名称", replayed.getRuleName());
-            assertEquals(1, replayed.getPoints());
+            assertEquals(BigDecimal.valueOf(1), replayed.getPoints());
         }
         verify(creationTransaction, never()).createRuleEvent(any());
     }
@@ -219,7 +220,7 @@ class StudentPointEventServiceTest {
         StudentPointEventCreationTransaction.ManualEventRequest request = captor.getValue();
         assertEquals(42L, request.studentId());
         assertEquals(77L, request.adjustmentRequestId());
-        assertEquals(-5, request.amount());
+        assertEquals(BigDecimal.valueOf(-5), request.amount());
         assertEquals("manual-adjustment:77", request.sourceKey());
         assertEquals("manual-adjustment:77:MANUAL_ADJUSTMENT", request.idempotencyKey());
         assertEquals(1L, request.operatorId());

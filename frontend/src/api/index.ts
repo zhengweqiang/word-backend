@@ -31,10 +31,16 @@ import type {
   GenerateReadingPayload,
   GenerateReadingResponse,
   StudentAttentionDailyStat,
+  StudentAssessmentSummary,
+  StudentAssignedPaperSummary,
   StudentDashboard,
   StudentDashboardRecordPayload,
   StudentPointSummary,
   StudentPointTransaction,
+  StudentPaperAnswerPayload,
+  StudentPaperAttempt,
+  StudentPaperResult,
+  SubmitStudentPaperResponse,
   StudentStudyPlanSummary,
   StudentWordMemory,
   StudyPlan,
@@ -480,6 +486,28 @@ export const studentDashboardApi = {
       body: JSON.stringify(payload),
     },
   ),
+};
+
+export const studentAssessmentApi = {
+  getPending: () => fetchJson<StudentAssessmentSummary[]>(`${API_BASE}/students/me/assessments/pending`),
+  getHistory: () => fetchJson<StudentAssessmentSummary[]>(`${API_BASE}/students/me/assessments/history`),
+};
+
+export const studentPaperApi = {
+  listAssigned: () => fetchJson<StudentAssignedPaperSummary[]>(`${API_BASE}/students/me/papers`),
+  open: (attemptId: number) => fetchJson<StudentPaperAttempt>(`${API_BASE}/students/me/papers/${attemptId}`),
+  saveDraft: (attemptId: number, expectedVersion: number, answers: StudentPaperAnswerPayload[]) =>
+    fetchJson<StudentPaperAttempt>(`${API_BASE}/students/me/papers/${attemptId}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify({ expectedVersion, answers }),
+    }),
+  submit: (attemptId: number, expectedVersion: number, answers: StudentPaperAnswerPayload[]) =>
+    fetchJson<SubmitStudentPaperResponse>(`${API_BASE}/students/me/papers/${attemptId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedVersion, answers }),
+    }),
+  getResult: (attemptId: number) =>
+    fetchJson<StudentPaperResult>(`${API_BASE}/students/me/papers/${attemptId}/result`),
 };
 
 export const studentPointApi = {

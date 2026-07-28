@@ -1,6 +1,7 @@
 package com.example.words.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,6 +22,9 @@ import com.example.words.model.Exam;
 import com.example.words.model.ExamQuestion;
 import com.example.words.model.ExamStatus;
 import com.example.words.model.MetaWord;
+import com.example.words.model.AppUser;
+import com.example.words.model.ResourceScopeType;
+import com.example.words.model.UserRole;
 import com.example.words.repository.DictionaryRepository;
 import com.example.words.repository.ExamQuestionRepository;
 import com.example.words.repository.ExamRepository;
@@ -30,12 +34,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 @ExtendWith(MockitoExtension.class)
 class ExamServiceTest {
@@ -52,19 +58,29 @@ class ExamServiceTest {
     @Mock
     private MetaWordRepository metaWordRepository;
 
+    @Mock
+    private TeacherStudentService teacherStudentService;
+
+    @Mock
+    private UserService userService;
+
     private ExamService examService;
     private DictionaryService dictionaryService;
 
     @BeforeEach
     void setUp() {
         dictionaryService = new DictionaryService(dictionaryRepository, null, null, null, null);
+        AccessControlService accessControlService = new AccessControlService(
+                null,
+                null,
+                teacherStudentService);
         examService = new ExamService(
                 examRepository,
                 examQuestionRepository,
                 dictionaryService,
                 metaWordRepository,
-                null,
-                null
+                accessControlService,
+                userService
         );
     }
 
@@ -244,6 +260,98 @@ class ExamServiceTest {
         assertEquals(1, result.getResults().size());
         assertEquals("A", result.getResults().get(0).getSelectedOption());
         assertEquals("苹果", result.getResults().get(0).getSelectedTranslation());
+    }
+
+    @Test
+    void teacherCreatesStudentTargetedExamThenStudentSubmitsAndSeesActorAwareHistory() {
+        AppUser teacher = user(5L, UserRole.TEACHER);
+        AppUser student = user(20L, UserRole.STUDENT);
+        Dictionary dictionary = new Dictionary();
+        dictionary.setId(10L);
+        dictionary.setName("班级词汇");
+        dictionary.setScopeType(ResourceScopeType.SYSTEM);
+        List<MetaWord> words = List.of(
+                metaWord(1L, "apple", "苹果"),
+                metaWord(2L, "book", "书"),
+                metaWord(3L, "chair", "椅子"),
+                metaWord(4L, "desk", "桌子"));
+        AtomicReference<Exam> savedExam = new AtomicReference<>();
+        AtomicReference<List<ExamQuestion>> savedQuestions = new AtomicReference<>(List.of());
+
+        when(userService.getUserEntity(20L)).thenReturn(student);
+        when(teacherStudentService.isTeacherResponsibleForStudent(5L, 20L)).thenReturn(true);
+        when(dictionaryRepository.findById(10L)).thenReturn(Optional.of(dictionary));
+        when(metaWordRepository.findAllByDictionaryId(10L)).thenReturn(List.of(words.get(0)));
+        when(metaWordRepository.findAll()).thenReturn(words);
+        when(examRepository.save(any(Exam.class))).thenAnswer(invocation -> {
+            Exam exam = invocation.getArgument(0);
+            if (exam.getId() == null) {
+                exam.setId(99L);
+                exam.setCreatedAt(LocalDateTime.of(2026, 7, 29, 9, 0));
+            }
+            savedExam.set(exam);
+            return exam;
+        });
+        when(examRepository.findById(99L)).thenAnswer(invocation -> Optional.ofNullable(savedExam.get()));
+        when(examQuestionRepository.saveAll(any())).thenAnswer(invocation -> {
+            List<ExamQuestion> questions = invocation.getArgument(0);
+            long nextId = 100L;
+            for (ExamQuestion question : questions) {
+                if (question.getId() == null) {
+                    question.setId(nextId++);
+                }
+            }
+            savedQuestions.set(new ArrayList<>(questions));
+            return questions;
+        });
+        when(examQuestionRepository.findByExamIdOrderByQuestionOrderAsc(99L))
+                .thenAnswer(invocation -> savedQuestions.get());
+        when(examRepository.findByStatusOrderBySubmittedAtDescCreatedAtDesc(ExamStatus.SUBMITTED))
+                .thenAnswer(invocation -> savedExam.get().getStatus() == ExamStatus.SUBMITTED
+                        ? List.of(savedExam.get())
+                        : List.of());
+
+        ExamResponse created = examService.createExam(new CreateExamRequest(10L, 1, 20L), teacher);
+        ExamQuestion generatedQuestion = savedQuestions.get().get(0);
+        SubmitExamResponse submitted = examService.submitExam(
+                created.getExamId(),
+                new SubmitExamRequest(List.of(new ExamAnswerDto(
+                        generatedQuestion.getId(), generatedQuestion.getCorrectOption()))),
+                student);
+        List<ExamHistoryItemDto> history = examService.getExamHistory(null, student);
+
+        assertEquals(20L, savedExam.get().getTargetUserId());
+        assertEquals(5L, savedExam.get().getCreatedByUserId());
+        assertEquals("SUBMITTED", submitted.getStatus());
+        assertEquals(100, submitted.getScore());
+        assertEquals(List.of(99L), history.stream().map(ExamHistoryItemDto::getExamId).toList());
+    }
+
+    @Test
+    void studentCannotSeeMalformedExamMerelyBecauseTheyAreTheCreator() {
+        AppUser student = user(20L, UserRole.STUDENT);
+        Exam malformed = new Exam();
+        malformed.setId(88L);
+        malformed.setDictionaryId(10L);
+        malformed.setQuestionCount(1);
+        malformed.setCreatedByUserId(20L);
+        malformed.setTargetUserId(21L);
+        malformed.setStatus(ExamStatus.SUBMITTED);
+        malformed.setSubmittedAt(LocalDateTime.of(2026, 7, 29, 10, 0));
+        when(examRepository.findByStatusOrderBySubmittedAtDescCreatedAtDesc(ExamStatus.SUBMITTED))
+                .thenReturn(List.of(malformed));
+        when(examRepository.findById(88L)).thenReturn(Optional.of(malformed));
+
+        assertFalse(examService.getExamHistory(null, student).stream()
+                .anyMatch(item -> item.getExamId().equals(88L)));
+        assertThrows(AccessDeniedException.class, () -> examService.getExam(88L, student));
+    }
+
+    private AppUser user(Long id, UserRole role) {
+        AppUser user = new AppUser();
+        user.setId(id);
+        user.setRole(role);
+        return user;
     }
 
     private MetaWord metaWord(Long id, String word, String translation) {
