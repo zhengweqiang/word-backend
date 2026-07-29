@@ -804,6 +804,7 @@ export interface PaperReleaseStudentResultResponse {
     releaseId: number;
     attemptId: number;
     studentId: number;
+    studentUsername?: string | null;
     status: StudentPaperAttemptStatus;
     late: boolean;
     answeredCount: number;

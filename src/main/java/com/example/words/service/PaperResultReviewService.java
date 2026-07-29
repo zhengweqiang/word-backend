@@ -42,6 +42,7 @@ import com.example.words.model.StudentPaperAttemptStatus;
 import com.example.words.model.UserRole;
 import com.example.words.repository.ClassroomMemberRepository;
 import com.example.words.repository.ClassroomRepository;
+import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.PaperReleaseQuestionRepository;
 import com.example.words.repository.PaperReleaseRepository;
 import com.example.words.repository.PaperReleaseTargetRepository;
@@ -64,6 +65,7 @@ public class PaperResultReviewService {
     private final ClassroomRepository classroomRepository;
     private final ClassroomMemberRepository classroomMemberRepository;
     private final TeacherStudentRelationRepository relationRepository;
+    private final AppUserRepository appUserRepository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -76,6 +78,7 @@ public class PaperResultReviewService {
             ClassroomRepository classroomRepository,
             ClassroomMemberRepository classroomMemberRepository,
             TeacherStudentRelationRepository relationRepository,
+            AppUserRepository appUserRepository,
             ObjectMapper objectMapper,
             Clock clock) {
         this.releaseRepository = releaseRepository;
@@ -86,6 +89,7 @@ public class PaperResultReviewService {
         this.classroomRepository = classroomRepository;
         this.classroomMemberRepository = classroomMemberRepository;
         this.relationRepository = relationRepository;
+        this.appUserRepository = appUserRepository;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -138,10 +142,12 @@ public class PaperResultReviewService {
                 .toList();
         StudentPaperAttemptStatus effectiveStatus = effectiveStatus(
                 release, attempt, LocalDateTime.now(clock));
+        String studentUsername = studentUsernames(List.of(attempt)).get(attempt.getStudentId());
         return new PaperReleaseStudentResultResponse(
                 releaseId,
                 attempt.getId(),
                 attempt.getStudentId(),
+                studentUsername,
                 effectiveStatus,
                 effectiveStatus == StudentPaperAttemptStatus.SUBMITTED_LATE,
                 attempt.getAnsweredCount(),
@@ -216,6 +222,7 @@ public class PaperResultReviewService {
                 }
             }
         }
+        Map<Long, String> studentUsernames = studentUsernames(attempts);
         return new PaperReleaseResultOverviewResponse(
                 release.getId(),
                 release.getTitle(),
@@ -232,19 +239,25 @@ public class PaperResultReviewService {
                 release.getResultsReleasedAt(),
                 release.getResultsReleasedByUserId(),
                 attempts.stream()
-                        .map(attempt -> toStudentSummary(release, attempt, now))
+                        .map(attempt -> toStudentSummary(
+                                release,
+                                attempt,
+                                now,
+                                studentUsernames.get(attempt.getStudentId())))
                         .toList());
     }
 
     private PaperReleaseStudentResultResponse toStudentSummary(
             PaperRelease release,
             StudentPaperAttempt attempt,
-            LocalDateTime now) {
+            LocalDateTime now,
+            String studentUsername) {
         StudentPaperAttemptStatus status = effectiveStatus(release, attempt, now);
         return new PaperReleaseStudentResultResponse(
                 release.getId(),
                 attempt.getId(),
                 attempt.getStudentId(),
+                studentUsername,
                 status,
                 status == StudentPaperAttemptStatus.SUBMITTED_LATE,
                 attempt.getAnsweredCount(),
@@ -254,6 +267,30 @@ public class PaperResultReviewService {
                 attempt.getScorePercentage(),
                 attempt.getSubmittedAt(),
                 List.of());
+    }
+
+    private Map<Long, String> studentUsernames(List<StudentPaperAttempt> attempts) {
+        Set<Long> studentIds = attempts.stream()
+                .map(StudentPaperAttempt::getStudentId)
+                .collect(Collectors.toSet());
+        if (studentIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> usernames = new HashMap<>();
+        for (AppUser user : appUserRepository.findAllById(studentIds)) {
+            String username = normalizeUsername(user.getUsername());
+            if (user.getId() != null && username != null) {
+                usernames.putIfAbsent(user.getId(), username);
+            }
+        }
+        return usernames;
+    }
+
+    private String normalizeUsername(String username) {
+        if (username == null || username.trim().isEmpty()) {
+            return null;
+        }
+        return username.trim();
     }
 
     private List<StudentPaperAttempt> visibleAttempts(PaperRelease release, AppUser actor) {

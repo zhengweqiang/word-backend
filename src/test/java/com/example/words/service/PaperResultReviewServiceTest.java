@@ -36,6 +36,7 @@ import com.example.words.model.StudentPaperAttemptStatus;
 import com.example.words.model.UserRole;
 import com.example.words.repository.ClassroomMemberRepository;
 import com.example.words.repository.ClassroomRepository;
+import com.example.words.repository.AppUserRepository;
 import com.example.words.repository.PaperReleaseQuestionRepository;
 import com.example.words.repository.PaperReleaseRepository;
 import com.example.words.repository.PaperReleaseTargetRepository;
@@ -84,6 +85,9 @@ class PaperResultReviewServiceTest {
     @Mock
     private TeacherStudentRelationRepository relationRepository;
 
+    @Mock
+    private AppUserRepository appUserRepository;
+
     private PaperResultReviewService service;
 
     @BeforeEach
@@ -98,6 +102,7 @@ class PaperResultReviewServiceTest {
                 classroomRepository,
                 classroomMemberRepository,
                 relationRepository,
+                appUserRepository,
                 new ObjectMapper(),
                 clock);
     }
@@ -211,6 +216,11 @@ class PaperResultReviewServiceTest {
         when(classroomRepository.findIdsByTeacherId(7L)).thenReturn(List.of(31L));
         when(relationRepository.findStudentIdsByTeacherIdAndStudentIdIn(eq(7L), anyCollection()))
                 .thenReturn(List.of(21L));
+        AppUser student20 = user(20L, UserRole.STUDENT);
+        student20.setUsername("student_api_20");
+        AppUser student21 = user(21L, UserRole.STUDENT);
+        student21.setUsername("student_api_21");
+        when(appUserRepository.findAllById(anyCollection())).thenReturn(List.of(student20, student21));
 
         PaperReleaseResultOverviewResponse result = service.getOverview(10L, responsibleTeacher);
 
@@ -221,6 +231,9 @@ class PaperResultReviewServiceTest {
         assertEquals(1, result.getCompletedCount());
         assertEquals(List.of(101L, 102L), result.getStudents().stream()
                 .map(PaperReleaseStudentResultResponse::getAttemptId)
+                .toList());
+        assertEquals(List.of("student_api_20", "student_api_21"), result.getStudents().stream()
+                .map(PaperReleaseStudentResultResponse::getStudentUsername)
                 .toList());
         assertEquals(StudentPaperAttemptStatus.OVERDUE, result.getStudents().get(0).getStatus());
         assertTrue(result.getStudents().get(0).getQuestions().isEmpty());
@@ -375,6 +388,7 @@ class PaperResultReviewServiceTest {
                 classroomRepository,
                 classroomMemberRepository,
                 relationRepository,
+                appUserRepository,
                 new ObjectMapper(),
                 changingClock);
         AppUser publisher = user(5L, UserRole.TEACHER);
@@ -456,6 +470,7 @@ class PaperResultReviewServiceTest {
                 answerRepository,
                 new ExamPaperAnswerNormalizer(),
                 new ObjectMapper(),
+                org.mockito.Mockito.mock(StudentPointEventPublisher.class),
                 Clock.fixed(Instant.parse("2026-07-29T02:00:00Z"), ZoneOffset.ofHours(8)));
 
         StudentPaperResultResponse held = studentService.getResult(101L, student);

@@ -58,6 +58,7 @@ public class StudentPaperAttemptService {
     };
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
+    private static final String EXAM_RULE_CODE = "EXAM";
 
     private final PaperReleaseRepository releaseRepository;
     private final PaperReleaseQuestionRepository releaseQuestionRepository;
@@ -65,6 +66,7 @@ public class StudentPaperAttemptService {
     private final StudentPaperAnswerRepository answerRepository;
     private final ExamPaperAnswerNormalizer answerNormalizer;
     private final ObjectMapper objectMapper;
+    private final StudentPointEventPublisher studentPointEventPublisher;
     private final Clock clock;
 
     public StudentPaperAttemptService(
@@ -74,6 +76,7 @@ public class StudentPaperAttemptService {
             StudentPaperAnswerRepository answerRepository,
             ExamPaperAnswerNormalizer answerNormalizer,
             ObjectMapper objectMapper,
+            StudentPointEventPublisher studentPointEventPublisher,
             Clock clock) {
         this.releaseRepository = releaseRepository;
         this.releaseQuestionRepository = releaseQuestionRepository;
@@ -81,6 +84,7 @@ public class StudentPaperAttemptService {
         this.answerRepository = answerRepository;
         this.answerNormalizer = answerNormalizer;
         this.objectMapper = objectMapper;
+        this.studentPointEventPublisher = studentPointEventPublisher;
         this.clock = clock;
     }
 
@@ -278,6 +282,7 @@ public class StudentPaperAttemptService {
                 ? StudentPaperAttemptStatus.SUBMITTED_LATE
                 : StudentPaperAttemptStatus.SUBMITTED);
         attemptRepository.saveAndFlush(attempt);
+        publishOnTimeSubmissionPointEvent(attempt);
         return toSubmitResponse(release, attempt, false);
     }
 
@@ -533,6 +538,19 @@ public class StudentPaperAttemptService {
                 PointSourceType.PAPER_RELEASE_ATTEMPT,
                 attemptId,
                 "paper-release-attempt:" + attemptId + ":" + submissionStatus.name());
+    }
+
+    private void publishOnTimeSubmissionPointEvent(StudentPaperAttempt attempt) {
+        if (attempt.getStatus() != StudentPaperAttemptStatus.SUBMITTED) {
+            return;
+        }
+        PaperAttemptPointSourceIdentity identity = pointSourceIdentity(attempt.getId(), attempt.getStatus());
+        studentPointEventPublisher.publishAfterCommit(new StudentPointEventPublisher.PublishRequest(
+                attempt.getStudentId(),
+                identity.sourceId(),
+                identity.sourceKey(),
+                EXAM_RULE_CODE
+        ));
     }
 
     private List<String> normalizeDraftBlanks(List<String> values) {
