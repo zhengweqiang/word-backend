@@ -16,6 +16,7 @@ public class PaperReleaseStudentResultResponse {
     private Long releaseId;
     private Long attemptId;
     private Long studentId;
+    private String studentUsername;
     private StudentPaperAttemptStatus status;
     private Boolean late;
     private Integer answeredCount;

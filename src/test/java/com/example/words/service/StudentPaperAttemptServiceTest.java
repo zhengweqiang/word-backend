@@ -71,6 +71,8 @@ class StudentPaperAttemptServiceTest {
     private StudentPaperAttemptRepository attemptRepository;
     @Mock
     private StudentPaperAnswerRepository answerRepository;
+    @Mock
+    private StudentPointEventPublisher studentPointEventPublisher;
 
     private StudentPaperAttemptService service;
     private AppUser student;
@@ -85,6 +87,7 @@ class StudentPaperAttemptServiceTest {
                 answerRepository,
                 new ExamPaperAnswerNormalizer(),
                 new ObjectMapper(),
+                studentPointEventPublisher,
                 clock);
         student = user(20L, UserRole.STUDENT);
     }

@@ -1,9 +1,10 @@
 package com.example.words.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.words.dto.SubmitStudentPaperRequest;
@@ -23,16 +24,11 @@ import com.example.words.repository.PaperReleaseRepository;
 import com.example.words.repository.StudentPaperAnswerRepository;
 import com.example.words.repository.StudentPaperAttemptRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -58,6 +54,8 @@ class StudentPaperAttemptPointEventTest {
     private StudentPaperAttemptRepository attemptRepository;
     @Mock
     private StudentPaperAnswerRepository answerRepository;
+    @Mock
+    private StudentPointEventPublisher studentPointEventPublisher;
 
     private StudentPaperAttemptService service;
     private AppUser student;
@@ -72,6 +70,7 @@ class StudentPaperAttemptPointEventTest {
                 answerRepository,
                 new ExamPaperAnswerNormalizer(),
                 new ObjectMapper(),
+                studentPointEventPublisher,
                 clock);
         student = new AppUser();
         student.setId(20L);
@@ -79,21 +78,43 @@ class StudentPaperAttemptPointEventTest {
     }
 
     @Test
-    void paperSubmissionHasNoDefaultPointPublisherDependencyOrCall() throws Exception {
-        boolean publisherField = Arrays.stream(StudentPaperAttemptService.class.getDeclaredFields())
-                .map(Field::getType)
-                .anyMatch(StudentPointEventPublisher.class::equals);
-        boolean publisherConstructorParameter = Arrays.stream(StudentPaperAttemptService.class.getDeclaredConstructors())
-                .map(Constructor::getParameterTypes)
-                .flatMap(Arrays::stream)
-                .anyMatch(StudentPointEventPublisher.class::equals);
-        String source = Files.readString(Path.of(
-                "src/main/java/com/example/words/service/StudentPaperAttemptService.java"));
+    void onTimeSubmissionPublishesExamPointEventAfterCommit() {
+        StudentPaperAttempt attempt = attempt();
+        PaperRelease release = release(NOW);
+        PaperReleaseQuestion question = question();
+        when(attemptRepository.findPaperReleaseIdByIdAndStudentId(100L, 20L)).thenReturn(Optional.of(10L));
+        when(releaseRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(release));
+        when(attemptRepository.findByIdAndStudentIdForUpdate(100L, 20L)).thenReturn(Optional.of(attempt));
+        when(releaseQuestionRepository.findByPaperReleaseIdOrderByQuestionOrderAsc(10L))
+                .thenReturn(List.of(question));
+        when(answerRepository.findByAttemptId(100L)).thenReturn(List.of());
+        when(attemptRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertFalse(publisherField);
-        assertFalse(publisherConstructorParameter);
-        assertFalse(source.contains("StudentPointEventPublisher"));
-        assertFalse(source.contains("publishAfterCommit("));
+        service.submit(100L, new SubmitStudentPaperRequest(3L, List.of()), student);
+
+        verify(studentPointEventPublisher).publishAfterCommit(argThat(request ->
+                Long.valueOf(20L).equals(request.studentId())
+                        && Long.valueOf(100L).equals(request.sourceId())
+                        && "paper-release-attempt:100:SUBMITTED".equals(request.sourceKey())
+                        && "EXAM".equals(request.ruleCode())));
+    }
+
+    @Test
+    void lateSubmissionDoesNotPublishExamPointEvent() {
+        StudentPaperAttempt attempt = attempt();
+        PaperRelease release = release(NOW.minusNanos(1));
+        PaperReleaseQuestion question = question();
+        when(attemptRepository.findPaperReleaseIdByIdAndStudentId(100L, 20L)).thenReturn(Optional.of(10L));
+        when(releaseRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(release));
+        when(attemptRepository.findByIdAndStudentIdForUpdate(100L, 20L)).thenReturn(Optional.of(attempt));
+        when(releaseQuestionRepository.findByPaperReleaseIdOrderByQuestionOrderAsc(10L))
+                .thenReturn(List.of(question));
+        when(answerRepository.findByAttemptId(100L)).thenReturn(List.of());
+        when(attemptRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.submit(100L, new SubmitStudentPaperRequest(3L, List.of()), student);
+
+        verify(studentPointEventPublisher, never()).publishAfterCommit(any());
     }
 
     @ParameterizedTest

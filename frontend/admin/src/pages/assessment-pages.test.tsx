@@ -107,7 +107,7 @@ describe("teacher assessment pages", () => {
             releaseId: 77, title: "四级周测", releaseStatus: "OPEN", assignedCount: 1,
             notStartedCount: 0, inProgressCount: 0, overdueCount: 0, submittedCount: 0,
             submittedLateCount: 1, completedCount: 1, resultVisibility: "HIDDEN_UNTIL_RELEASED",
-            resultsReleased: false, students: [{ releaseId: 77, attemptId: 501, studentId: 12, status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, questions: [] }],
+            resultsReleased: false, students: [{ releaseId: 77, attemptId: 501, studentId: 12, studentUsername: "student_api_20260729", status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, questions: [] } as any],
         });
         vi.mocked(api.getPaperReleaseQuestionStats).mockResolvedValue([{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, submissionCount: 1, answeredCount: 1, correctCount: 1, correctnessRate: 100 }]);
         vi.mocked(api.getPaperReleaseStudentResult).mockResolvedValue({ releaseId: 77, attemptId: 501, studentId: 12, status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, submittedAt: "2026-07-29T11:00:00", questions: [{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, options: question.options, selectedAnswers: ["A"], blankAnswers: [], correct: true, earnedScore: 2, questionScore: 2, acceptedAnswers: ["A"], explanation: "核心词义" }] });
@@ -192,6 +192,22 @@ describe("teacher assessment pages", () => {
         expect(screen.getByRole("button", { name: "导入已确认" })).toBeDisabled();
         fireEvent.click(screen.getByRole("button", { name: "导入已确认" }));
         expect(api.confirmQuestionImport).toHaveBeenCalledTimes(1);
+    });
+
+    it("renders import preview columns with stable widths and localized question types", async () => {
+        render(() => <QuestionImportPage />);
+        fireEvent.change(screen.getByLabelText("CSV 文件"), {
+            target: { files: [new File(["csv"], "questions.csv", { type: "text/csv" })] },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "预览导入" }));
+
+        expect(await screen.findByText("填空题")).toBeInTheDocument();
+        expect(screen.queryByText("FILL_IN_BLANK")).not.toBeInTheDocument();
+        expect(screen.getByRole("columnheader", { name: "选择" })).toHaveClass("w-24", "whitespace-nowrap");
+        expect(screen.getByRole("columnheader", { name: "状态" })).toHaveClass("w-28", "whitespace-nowrap");
+        expect(screen.getByRole("columnheader", { name: "题型" })).toHaveClass("w-32", "whitespace-nowrap");
+        expect(screen.getByRole("columnheader", { name: "题干" })).toHaveClass("w-[28rem]");
+        expect(screen.getByRole("columnheader", { name: "校验信息" })).toHaveClass("w-28", "whitespace-nowrap");
     });
 
     it("creates a paper and links its edit route", async () => {
@@ -382,6 +398,7 @@ describe("teacher assessment pages", () => {
     it("loads release result details from the route and shows frozen answers", async () => {
         render(() => <PaperResultPage />);
         expect((await screen.findAllByText("超时提交")).length).toBeGreaterThan(0);
+        expect(screen.getByText("student_api_20260729")).toBeInTheDocument();
         expect(api.getPaperReleaseResults).toHaveBeenCalledWith(77);
         fireEvent.click(screen.getByRole("button", { name: "查看学生 12" }));
         expect(await screen.findByText("A：放弃")).toBeInTheDocument();
