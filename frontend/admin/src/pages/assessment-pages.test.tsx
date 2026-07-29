@@ -66,6 +66,7 @@ describe("teacher assessment pages", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         Object.assign(authUser, { id: 7, role: "TEACHER", displayName: "老师" });
+        Object.assign(routeParams, { paperId: "42", releaseId: "77" });
         vi.stubGlobal("confirm", vi.fn(() => true));
         vi.mocked(api.listQuestions).mockResolvedValue({ ...emptyPage, content: [question], totalElements: 1, totalPages: 1, numberOfElements: 1 });
         vi.mocked(api.createQuestion).mockResolvedValue(question);
@@ -110,7 +111,7 @@ describe("teacher assessment pages", () => {
             resultsReleased: false, students: [{ releaseId: 77, attemptId: 501, studentId: 12, studentUsername: "student_api_20260729", status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, questions: [] } as any],
         });
         vi.mocked(api.getPaperReleaseQuestionStats).mockResolvedValue([{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, submissionCount: 1, answeredCount: 1, correctCount: 1, correctnessRate: 100 }]);
-        vi.mocked(api.getPaperReleaseStudentResult).mockResolvedValue({ releaseId: 77, attemptId: 501, studentId: 12, status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, submittedAt: "2026-07-29T11:00:00", questions: [{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, options: question.options, selectedAnswers: ["A"], blankAnswers: [], correct: true, earnedScore: 2, questionScore: 2, acceptedAnswers: ["A"], explanation: "核心词义" }] });
+        vi.mocked(api.getPaperReleaseStudentResult).mockResolvedValue({ releaseId: 77, attemptId: 501, studentId: 12, studentUsername: "student_api_20260729", status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, submittedAt: "2026-07-29T11:00:00", questions: [{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, options: question.options, selectedAnswers: ["A"], blankAnswers: [], correct: true, earnedScore: 2, questionScore: 2, acceptedAnswers: ["A"], explanation: "核心词义" }] });
     });
 
     it("creates a question from structured option, answer, and tag fields", async () => {
@@ -361,6 +362,13 @@ describe("teacher assessment pages", () => {
         expect(api.invalidatePaperRelease).toHaveBeenCalledWith(77, { reason: "答案配置错误" });
     });
 
+    it("localizes release result visibility in the correction panel", async () => {
+        vi.mocked(api.listPaperReleases).mockResolvedValue([{ ...release, resultVisibility: "SCORE_ONLY" }]);
+        render(() => <PaperReleasePage />);
+        expect(await screen.findByText("仅分数")).toBeInTheDocument();
+        expect(screen.queryByText("SCORE_ONLY")).not.toBeInTheDocument();
+    });
+
     it("renders responsive tables and keyboard-operable release selection", async () => {
         render(() => <PaperReleasePage />);
         const selectRelease = await screen.findByRole("button", { name: "选择发布 四级周测" });
@@ -395,12 +403,21 @@ describe("teacher assessment pages", () => {
         resolveCreate(question);
     });
 
+    it("localizes release status in the result list", async () => {
+        routeParams.releaseId = "";
+        render(() => <PaperResultPage />);
+        expect(await screen.findByText("进行中")).toBeInTheDocument();
+        expect(screen.queryByText("OPEN")).not.toBeInTheDocument();
+    });
+
     it("loads release result details from the route and shows frozen answers", async () => {
         render(() => <PaperResultPage />);
         expect((await screen.findAllByText("超时提交")).length).toBeGreaterThan(0);
         expect(screen.getByText("student_api_20260729")).toBeInTheDocument();
         expect(api.getPaperReleaseResults).toHaveBeenCalledWith(77);
         fireEvent.click(screen.getByRole("button", { name: "查看学生 12" }));
+        expect(await screen.findByRole("heading", { name: "student_api_20260729" })).toBeInTheDocument();
+        expect(screen.queryByRole("heading", { name: "学生 #12" })).not.toBeInTheDocument();
         expect(await screen.findByText("A：放弃")).toBeInTheDocument();
         expect(screen.getByText("正确答案：A")).toBeInTheDocument();
     });
