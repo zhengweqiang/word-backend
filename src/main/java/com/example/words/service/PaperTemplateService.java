@@ -409,6 +409,7 @@ public class PaperTemplateService {
         copy.setSourceQuestionId(source.getSourceQuestionId());
         copy.setQuestionOrder(source.getQuestionOrder());
         copy.setQuestionType(source.getQuestionType());
+        copy.setCategory(source.getCategory());
         copy.setStem(source.getStem());
         copy.setOptionsJson(source.getOptionsJson());
         copy.setAcceptedAnswersJson(source.getAcceptedAnswersJson());
@@ -453,6 +454,7 @@ public class PaperTemplateService {
                 paper.getShuffleOptions(),
                 paper.getTotalScore(),
                 questionResponses.size(),
+                categories(questionResponses),
                 questionResponses,
                 paper.getCreatedAt(),
                 paper.getUpdatedAt(),
@@ -465,6 +467,7 @@ public class PaperTemplateService {
                 question.getSourceQuestionId(),
                 question.getQuestionOrder(),
                 question.getQuestionType(),
+                question.getCategory(),
                 question.getStem(),
                 readMap(question.getOptionsJson()),
                 readList(question.getAcceptedAnswersJson()),
@@ -473,6 +476,14 @@ public class PaperTemplateService {
                 question.getDictionaryId(),
                 question.getMetaWordId(),
                 question.getCreatedAt());
+    }
+
+    private List<String> categories(List<PaperTemplateQuestionResponse> questions) {
+        return questions.stream()
+                .map(PaperTemplateQuestionResponse::getCategory)
+                .filter(category -> category != null && !category.isBlank())
+                .distinct()
+                .toList();
     }
 
     private Map<String, String> readMap(String json) {

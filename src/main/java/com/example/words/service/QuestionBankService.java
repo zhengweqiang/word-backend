@@ -87,6 +87,7 @@ public class QuestionBankService {
         ensureWritableStatus(status);
         ValidatedQuestion normalized = normalizeAndValidate(
                 request.getQuestionType(),
+                request.getCategory(),
                 request.getStem(),
                 request.getOptions(),
                 request.getAcceptedAnswers(),
@@ -109,6 +110,7 @@ public class QuestionBankService {
         }
         return normalizeAndValidate(
                 request.getQuestionType(),
+                request.getCategory(),
                 request.getStem(),
                 request.getOptions(),
                 request.getAcceptedAnswers(),
@@ -169,6 +171,7 @@ public class QuestionBankService {
 
         ValidatedQuestion normalized = normalizeAndValidate(
                 request.getQuestionType(),
+                request.getCategory(),
                 request.getStem(),
                 request.getOptions(),
                 request.getAcceptedAnswers(),
@@ -193,6 +196,7 @@ public class QuestionBankService {
 
         ValidatedQuestion normalized = normalizeAndValidate(
                 source.getQuestionType(),
+                source.getCategory(),
                 stem,
                 readOptions(source.getOptionsJson()),
                 readStringList(source.getAcceptedAnswersJson(), "accepted answers"),
@@ -231,6 +235,7 @@ public class QuestionBankService {
         Specification<QuestionBankItem> specification = Specification.<QuestionBankItem>where(visibleTo(actor))
                 .and(keywordLike(resolvedRequest.getKeyword()))
                 .and(questionTypeEquals(resolvedRequest.getQuestionType()))
+                .and(categoryEquals(resolvedRequest.getCategory()))
                 .and(statusEquals(resolvedRequest.getStatus()))
                 .and(tagEquals(resolvedRequest.getTag()))
                 .and(fieldEquals("dictionaryId", resolvedRequest.getDictionaryId()))
@@ -244,8 +249,17 @@ public class QuestionBankService {
         return new PageImpl<>(content, pageable, result.getTotalElements());
     }
 
+    @Transactional(readOnly = true)
+    public List<String> listCategories(AppUser actor) {
+        ensureStaff(actor);
+        return questionRepository.findDistinctCategoriesVisibleTo(
+                actor.getId(),
+                actor.getRole() == UserRole.ADMIN);
+    }
+
     private ValidatedQuestion normalizeAndValidate(
             QuestionType questionType,
+            String category,
             String stem,
             Map<String, String> options,
             List<String> acceptedAnswers,
@@ -258,6 +272,7 @@ public class QuestionBankService {
         if (questionType == null) {
             throw new BadRequestException("Question type is required");
         }
+        String normalizedCategory = normalizeCategory(category);
         String normalizedStem = trimToNull(stem);
         if (normalizedStem == null) {
             throw new BadRequestException("Question stem is required");
@@ -278,6 +293,7 @@ public class QuestionBankService {
 
         return new ValidatedQuestion(
                 questionType,
+                normalizedCategory,
                 normalizedStem,
                 normalizedOptions,
                 normalizedAnswers,
@@ -287,6 +303,14 @@ public class QuestionBankService {
                 trimToNull(explanation),
                 dictionaryId,
                 metaWordId);
+    }
+
+    private String normalizeCategory(String category) {
+        String normalized = trimToNull(category);
+        if (normalized != null && normalized.length() > 100) {
+            throw new BadRequestException("Question category must be at most 100 characters");
+        }
+        return normalized;
     }
 
     private Map<String, String> normalizeOptions(Map<String, String> options) {
@@ -388,6 +412,7 @@ public class QuestionBankService {
             QuestionBankItemStatus status,
             Long modifiedByUserId) {
         question.setQuestionType(normalized.questionType());
+        question.setCategory(normalized.category());
         question.setStem(normalized.stem());
         question.setOptionsJson(writeJson(normalized.options(), "options"));
         question.setAcceptedAnswersJson(writeJson(normalized.acceptedAnswers(), "accepted answers"));
@@ -492,6 +517,14 @@ public class QuestionBankService {
         return (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("questionType"), questionType);
     }
 
+    private Specification<QuestionBankItem> categoryEquals(String category) {
+        String normalized = trimToNull(category);
+        if (normalized == null) {
+            return null;
+        }
+        return (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("category"), normalized);
+    }
+
     private Specification<QuestionBankItem> statusEquals(QuestionBankItemStatus status) {
         if (status == null) {
             return null;
@@ -520,6 +553,7 @@ public class QuestionBankService {
         return new QuestionBankItemResponse(
                 question.getId(),
                 question.getQuestionType(),
+                question.getCategory(),
                 question.getStem(),
                 readOptions(question.getOptionsJson()),
                 readStringList(question.getAcceptedAnswersJson(), "accepted answers"),
@@ -587,6 +621,7 @@ public class QuestionBankService {
 
     public record ValidatedQuestion(
             QuestionType questionType,
+            String category,
             String stem,
             Map<String, String> options,
             List<String> acceptedAnswers,

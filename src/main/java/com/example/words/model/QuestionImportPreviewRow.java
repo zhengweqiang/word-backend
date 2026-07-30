@@ -56,6 +56,9 @@ public class QuestionImportPreviewRow {
     @Column(name = "question_type", length = 32)
     private QuestionType questionType;
 
+    @Column(name = "category", length = 100)
+    private String category;
+
     @Column(name = "stem", columnDefinition = "TEXT")
     private String stem;
 

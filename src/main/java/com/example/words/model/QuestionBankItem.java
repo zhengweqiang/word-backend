@@ -45,6 +45,9 @@ public class QuestionBankItem {
     @Column(name = "question_type", nullable = false, length = 32)
     private QuestionType questionType;
 
+    @Column(name = "category", length = 100)
+    private String category;
+
     @Column(name = "stem", nullable = false, columnDefinition = "TEXT")
     private String stem;
 

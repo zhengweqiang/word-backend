@@ -17,6 +17,7 @@ public class StudentPaperQuestionResponse {
     private Long id;
     private Integer questionOrder;
     private QuestionType questionType;
+    private String category;
     private String stem;
     private Map<String, String> options;
     private BigDecimal score;

@@ -14,6 +14,7 @@ public class PaperReleaseQuestionStatResponse {
     private Long releaseQuestionId;
     private Integer questionOrder;
     private QuestionType questionType;
+    private String category;
     private String stem;
     private int submissionCount;
     private int answeredCount;

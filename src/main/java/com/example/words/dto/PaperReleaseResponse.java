@@ -25,6 +25,7 @@ public class PaperReleaseResponse {
     private PaperReleaseStatus status;
     private Integer questionCount;
     private BigDecimal totalScore;
+    private List<String> categories;
     private Boolean shuffleQuestions;
     private Boolean shuffleOptions;
     private LocalDateTime startTime;

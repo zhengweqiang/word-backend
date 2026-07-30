@@ -654,6 +654,7 @@ export type StudentPaperAttemptStatus =
 
 export interface QuestionPayload {
     questionType: QuestionType;
+    category?: string | null;
     stem: string;
     options?: Record<string, string>;
     acceptedAnswers: string[];
@@ -678,11 +679,21 @@ export interface QuestionBankItemResponse extends QuestionPayload {
     archivedAt?: string | null;
 }
 
+export interface QuestionCategoryResponse {
+    id: number;
+    name: string;
+    createdByUserId: number;
+    lastModifiedByUserId?: number | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+}
+
 export interface QuestionImportPreviewRowResponse {
     id: number;
     rowNumber: number;
     status: QuestionImportRowStatus;
     questionType?: QuestionType | null;
+    category?: string | null;
     stem?: string | null;
     options?: Record<string, string> | null;
     acceptedAnswers?: string[] | null;
@@ -724,6 +735,7 @@ export interface PaperTemplateQuestionResponse {
     sourceQuestionId: number;
     questionOrder: number;
     questionType: QuestionType;
+    category?: string | null;
     stem: string;
     options?: Record<string, string> | null;
     acceptedAnswers: string[];
@@ -745,6 +757,7 @@ export interface PaperTemplateResponse {
     shuffleOptions: boolean;
     totalScore: number;
     questionCount: number;
+    categories?: string[];
     questions: PaperTemplateQuestionResponse[];
     createdAt?: string | null;
     updatedAt?: string | null;
@@ -768,6 +781,7 @@ export interface PaperReleaseResponse {
     status: PaperReleaseStatus;
     questionCount: number;
     totalScore: number;
+    categories?: string[];
     shuffleQuestions: boolean;
     shuffleOptions: boolean;
     startTime?: string | null;
@@ -820,6 +834,7 @@ export interface StudentPaperResultQuestionResponse {
     releaseQuestionId: number;
     questionOrder: number;
     questionType: QuestionType;
+    category?: string | null;
     stem: string;
     options?: Record<string, string> | null;
     selectedAnswers: string[];
@@ -853,6 +868,7 @@ export interface PaperReleaseQuestionStatResponse {
     releaseQuestionId: number;
     questionOrder: number;
     questionType: QuestionType;
+    category?: string | null;
     stem: string;
     submissionCount: number;
     answeredCount: number;

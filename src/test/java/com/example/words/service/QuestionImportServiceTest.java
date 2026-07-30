@@ -65,7 +65,7 @@ class QuestionImportServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-29T03:00:00Z");
     private static final LocalDateTime LOCAL_NOW = LocalDateTime.ofInstant(NOW, ZoneOffset.UTC);
     private static final String HEADERS = String.join(",",
-            "questionType", "stem", "optionA", "optionB", "optionC", "optionD",
+            "questionType", "category", "stem", "optionA", "optionB", "optionC", "optionD",
             "correctAnswers", "score", "difficulty", "tags", "explanation", "dictionaryName", "word");
 
     @Mock
@@ -143,7 +143,7 @@ class QuestionImportServiceTest {
     @Test
     void previewParsesUtf8BomAndPersistsNormalizedValidRows() {
         String csv = "\uFEFF" + HEADERS + "\n"
-                + "single_choice,  Capital of France?  , Paris ,London,,, a ,2.50,3, geography , Basic , , \n";
+                + "single_choice, 听力,  Capital of France?  , Paris ,London,,, a ,2.50,3, geography , Basic , , \n";
 
         QuestionImportPreviewResponse response = service.preview(file("questions.csv", csv), teacher(7L));
 
@@ -160,12 +160,14 @@ class QuestionImportServiceTest {
         assertEquals(2, row.getRowNumber());
         assertEquals(QuestionImportPreviewRowStatus.VALID, row.getStatus());
         assertEquals(QuestionType.SINGLE_CHOICE, row.getQuestionType());
+        assertEquals("听力", row.getCategory());
         assertEquals("Capital of France?", row.getStem());
         assertEquals(Map.of("A", "Paris", "B", "London"), row.getOptions());
         assertEquals(List.of("A"), row.getAcceptedAnswers());
         assertEquals(new BigDecimal("2.50"), row.getScore());
         assertEquals(List.of("geography"), row.getTags());
         assertEquals("single_choice", row.getRawRow().get("questionType"));
+        assertEquals(" 听力", row.getRawRow().get("category"));
 
         ArgumentCaptor<List<QuestionImportPreviewRow>> captor = ArgumentCaptor.forClass(List.class);
         verify(rowRepository).saveAll(captor.capture());
@@ -188,8 +190,8 @@ class QuestionImportServiceTest {
     @Test
     void previewPersistsInvalidOptionAndCorrectAnswerRowsWithReadableMessages() {
         String csv = HEADERS + "\n"
-                + "SINGLE_CHOICE,Question one,Only one option,,,,A,1,,,,,\n"
-                + "SINGLE_CHOICE,Question two,One,Two,,,C,1,,,,,\n";
+                + "SINGLE_CHOICE,,Question one,Only one option,,,,A,1,,,,,\n"
+                + "SINGLE_CHOICE,,Question two,One,Two,,,C,1,,,,,\n";
 
         QuestionImportPreviewResponse response = service.preview(file("invalid.csv", csv), teacher(7L));
 
@@ -257,7 +259,7 @@ class QuestionImportServiceTest {
         existing.setAcceptedAnswersJson(objectMapper.writeValueAsString(List.of("A", "B")));
         when(questionRepository.findAll()).thenReturn(List.of(existing));
         String csv = HEADERS + "\n"
-                + "multiple_choice, Select primes , 2 , 3 , 4 ,, b|a,1,,,,,\n";
+                + "multiple_choice,, Select primes , 2 , 3 , 4 ,, b|a,1,,,,,\n";
 
         QuestionImportPreviewRowResponse row = service.preview(file("duplicates.csv", csv), teacher(7L))
                 .getRows().get(0);
@@ -272,7 +274,7 @@ class QuestionImportServiceTest {
         when(dictionaryRepository.findByName("Unknown dictionary")).thenReturn(Optional.empty());
         when(metaWordRepository.findByNormalizedWord("missing")).thenReturn(Optional.empty());
         String csv = HEADERS + "\n"
-                + "FILL_IN_BLANK,Complete it,,,,,answer,1,,,,Unknown dictionary,Missing\n";
+                + "FILL_IN_BLANK,,Complete it,,,,,answer,1,,,,Unknown dictionary,Missing\n";
 
         QuestionImportPreviewRowResponse row = service.preview(file("trace.csv", csv), teacher(7L))
                 .getRows().get(0);
@@ -322,6 +324,7 @@ class QuestionImportServiceTest {
         QuestionImportPreviewRow valid = previewRow(
                 102L, 40L, 2, QuestionImportPreviewRowStatus.VALID,
                 QuestionType.SINGLE_CHOICE, "Persisted one", Map.of("A", "Yes", "B", "No"), List.of("A"));
+        valid.setCategory("听力");
         valid.setDictionaryId(11L);
         valid.setMetaWordId(22L);
         QuestionImportPreviewRow duplicate = previewRow(
@@ -358,6 +361,7 @@ class QuestionImportServiceTest {
                         && question.getImportBatchId().equals(40L)));
         assertEquals(11L, captor.getAllValues().get(0).getDictionaryId());
         assertEquals(22L, captor.getAllValues().get(0).getMetaWordId());
+        assertEquals("听力", captor.getAllValues().get(0).getCategory());
     }
 
     @Test

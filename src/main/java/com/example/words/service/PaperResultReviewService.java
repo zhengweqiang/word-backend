@@ -394,6 +394,7 @@ public class PaperResultReviewService {
                 release.getStatus(),
                 release.getQuestionCount(),
                 release.getTotalScore(),
+                categories(release.getId()),
                 release.getShuffleQuestions(),
                 release.getShuffleOptions(),
                 release.getStartTime(),
@@ -414,6 +415,14 @@ public class PaperResultReviewService {
                 release.getShowSupersededToStudents(),
                 release.getCreatedAt(),
                 targetResponses);
+    }
+
+    private List<String> categories(Long releaseId) {
+        return questionRepository.findByPaperReleaseIdOrderByQuestionOrderAsc(releaseId).stream()
+                .map(PaperReleaseQuestion::getCategory)
+                .filter(category -> category != null && !category.isBlank())
+                .distinct()
+                .toList();
     }
 
     private void ensureReviewActor(AppUser actor) {
@@ -464,6 +473,7 @@ public class PaperResultReviewService {
                 question.getId(),
                 question.getQuestionOrder(),
                 question.getQuestionType(),
+                question.getCategory(),
                 question.getStem(),
                 submissionCount,
                 answeredCount,
@@ -477,6 +487,7 @@ public class PaperResultReviewService {
                 question.getId(),
                 question.getQuestionOrder(),
                 question.getQuestionType(),
+                question.getCategory(),
                 question.getStem(),
                 readMap(question.getOptionsJson()),
                 answer == null ? List.of() : readList(answer.getSelectedAnswersJson()),

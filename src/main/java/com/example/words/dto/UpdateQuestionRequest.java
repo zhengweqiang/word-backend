@@ -26,6 +26,9 @@ public class UpdateQuestionRequest {
     @NotNull
     private QuestionType questionType;
 
+    @Size(max = 100)
+    private String category;
+
     @NotBlank
     private String stem;
 
@@ -52,4 +55,31 @@ public class UpdateQuestionRequest {
 
     @NotNull
     private QuestionBankItemStatus status;
+
+    public UpdateQuestionRequest(
+            QuestionType questionType,
+            String stem,
+            Map<String, String> options,
+            List<String> acceptedAnswers,
+            BigDecimal defaultScore,
+            Integer difficulty,
+            List<String> tags,
+            String explanation,
+            Long dictionaryId,
+            Long metaWordId,
+            QuestionBankItemStatus status) {
+        this(
+                questionType,
+                null,
+                stem,
+                options,
+                acceptedAnswers,
+                defaultScore,
+                difficulty,
+                tags,
+                explanation,
+                dictionaryId,
+                metaWordId,
+                status);
+    }
 }

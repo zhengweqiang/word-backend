@@ -120,10 +120,11 @@ class QuestionBankServiceTest {
         options.put("b", "Second");
 
         QuestionBankItemResponse response = service.create(
-                request(QuestionType.SINGLE_CHOICE, options, List.of(" a "), null),
+                request(QuestionType.SINGLE_CHOICE, options, List.of(" a "), null, " 听力 "),
                 user(7L, UserRole.TEACHER));
 
         assertEquals(QuestionBankItemStatus.DRAFT, response.getStatus());
+        assertEquals("听力", response.getCategory());
         assertEquals(Map.of("A", "First", "B", "Second"), response.getOptions());
         assertEquals(List.of("A"), response.getAcceptedAnswers());
         assertEquals(7L, response.getCreatedByUserId());
@@ -464,6 +465,7 @@ class QuestionBankServiceTest {
         request.setDictionaryId(10L);
         request.setMetaWordId(20L);
         request.setCreatorId(8L);
+        request.setCategory("听力");
         request.setPage(2);
         request.setSize(15);
 
@@ -490,13 +492,23 @@ class QuestionBankServiceTest {
                 .collect(Collectors.toSet());
         assertTrue(referencedFields.containsAll(Set.of(
                 "status", "createdByUserId", "importedByUserId", "stem", "explanation", "questionType", "tags",
-                "dictionaryId", "metaWordId")));
+                "dictionaryId", "metaWordId", "category")));
         Set<Object> equalityValues = mockingDetails(criteriaBuilder).getInvocations().stream()
                 .filter(invocation -> invocation.getMethod().getName().equals("equal"))
                 .map(invocation -> invocation.getArgument(1))
                 .collect(Collectors.toSet());
         assertTrue(equalityValues.containsAll(Set.of(
-                QuestionBankItemStatus.ACTIVE, QuestionType.SINGLE_CHOICE, 7L, 8L, 10L, 20L)));
+                QuestionBankItemStatus.ACTIVE, QuestionType.SINGLE_CHOICE, "听力", 7L, 8L, 10L, 20L)));
+    }
+
+    @Test
+    void listCategoriesReturnsDistinctVisibleQuestionBankCategories() {
+        when(questionRepository.findDistinctCategoriesVisibleTo(7L, false))
+                .thenReturn(List.of("七年级英语单词", "听力"));
+
+        List<String> categories = service.listCategories(user(7L, UserRole.TEACHER));
+
+        assertEquals(List.of("七年级英语单词", "听力"), categories);
     }
 
     @Test
@@ -544,8 +556,18 @@ class QuestionBankServiceTest {
             Map<String, String> options,
             List<String> acceptedAnswers,
             QuestionBankItemStatus status) {
+        return request(type, options, acceptedAnswers, status, "阅读");
+    }
+
+    private CreateQuestionRequest request(
+            QuestionType type,
+            Map<String, String> options,
+            List<String> acceptedAnswers,
+            QuestionBankItemStatus status,
+            String category) {
         return new CreateQuestionRequest(
                 type,
+                category,
                 "Question stem",
                 options,
                 acceptedAnswers,
@@ -566,6 +588,7 @@ class QuestionBankServiceTest {
             QuestionBankItemStatus status) {
         return new UpdateQuestionRequest(
                 type,
+                "阅读",
                 stem,
                 options,
                 acceptedAnswers,
@@ -583,6 +606,7 @@ class QuestionBankServiceTest {
         QuestionBankItem question = new QuestionBankItem();
         question.setId(id);
         question.setQuestionType(QuestionType.FILL_IN_BLANK);
+        question.setCategory("阅读");
         question.setStem("Original stem");
         question.setOptionsJson("{}");
         question.setAcceptedAnswersJson("[\"answer\"]");
