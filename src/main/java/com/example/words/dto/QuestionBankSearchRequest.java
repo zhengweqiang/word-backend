@@ -13,6 +13,7 @@ public class QuestionBankSearchRequest {
 
     private String keyword;
     private QuestionType questionType;
+    private String category;
     private QuestionBankItemStatus status;
     private String tag;
     private Long dictionaryId;

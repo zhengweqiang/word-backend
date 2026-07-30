@@ -1,5 +1,7 @@
 package com.example.words.controller;
 
+import java.util.List;
+
 import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Page;
@@ -44,6 +46,11 @@ public class TeacherQuestionBankController {
     public ResponseEntity<Page<QuestionBankItemResponse>> search(
             @Valid @ModelAttribute QuestionBankSearchRequest request) {
         return ResponseEntity.ok(questionBankService.search(request, currentUserService.getCurrentUser()));
+    }
+
+    @GetMapping("/categories")
+    public ResponseEntity<List<String>> listCategories() {
+        return ResponseEntity.ok(questionBankService.listCategories(currentUserService.getCurrentUser()));
     }
 
     @PostMapping

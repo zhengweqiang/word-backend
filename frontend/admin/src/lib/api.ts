@@ -33,6 +33,7 @@ import type {
     PaperTemplateStatus,
     PublishPaperPayload,
     QuestionBankItemResponse,
+    QuestionCategoryResponse,
     QuestionImportConfirmResponse,
     QuestionImportPreviewResponse,
     QuestionPayload,
@@ -357,10 +358,23 @@ export const api = {
 
     listQuestions: (params: {
         page?: number; size?: number; keyword?: string; questionType?: QuestionType;
-        status?: QuestionStatus; tag?: string; dictionaryId?: number; metaWordId?: number; creatorId?: number;
+        category?: string; status?: QuestionStatus; tag?: string; dictionaryId?: number; metaWordId?: number; creatorId?: number;
     }) => request<PaginatedResponse<QuestionBankItemResponse>>(
         `/api/teacher/questions${buildQueryString(params)}`,
     ),
+    listQuestionBankCategories: () =>
+        request<string[]>("/api/teacher/questions/categories"),
+    listQuestionCategories: () =>
+        request<QuestionCategoryResponse[]>("/api/teacher/question-categories"),
+    createQuestionCategory: (payload: { name: string }) =>
+        request<QuestionCategoryResponse>("/api/teacher/question-categories", { method: "POST", body: payload }),
+    updateQuestionCategory: (categoryId: number, payload: { name: string }) =>
+        request<QuestionCategoryResponse>(`/api/teacher/question-categories/${categoryId}`, {
+            method: "PUT",
+            body: payload,
+        }),
+    deleteQuestionCategory: (categoryId: number) =>
+        request<void>(`/api/teacher/question-categories/${categoryId}`, { method: "DELETE" }),
     createQuestion: (payload: QuestionPayload) =>
         request<QuestionBankItemResponse>("/api/teacher/questions", { method: "POST", body: payload }),
     updateQuestion: (questionId: number, payload: QuestionPayload) =>

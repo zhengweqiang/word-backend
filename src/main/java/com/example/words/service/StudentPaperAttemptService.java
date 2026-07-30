@@ -639,6 +639,7 @@ public class StudentPaperAttemptService {
                 question.getId(),
                 question.getQuestionOrder(),
                 question.getQuestionType(),
+                question.getCategory(),
                 question.getStem(),
                 readMap(question.getOptionsJson()),
                 question.getScore());
@@ -735,6 +736,7 @@ public class StudentPaperAttemptService {
                 question.getId(),
                 question.getQuestionOrder(),
                 question.getQuestionType(),
+                question.getCategory(),
                 question.getStem(),
                 readMap(question.getOptionsJson()),
                 answer == null ? List.of() : readList(answer.getSelectedAnswersJson()),

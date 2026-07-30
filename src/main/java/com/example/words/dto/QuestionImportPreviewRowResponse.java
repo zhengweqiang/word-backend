@@ -20,6 +20,7 @@ public class QuestionImportPreviewRowResponse {
     private Integer rowNumber;
     private QuestionImportPreviewRowStatus status;
     private QuestionType questionType;
+    private String category;
     private String stem;
     private Map<String, String> options;
     private List<String> acceptedAnswers;

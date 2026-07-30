@@ -26,6 +26,7 @@ export function PaperEditorPage() {
     const paperId = () => Number(params.paperId);
     const [paper, setPaper] = createSignal<PaperTemplateResponse | null>(null);
     const [questions, setQuestions] = createSignal<QuestionBankItemResponse[]>([]);
+    const [categories, setCategories] = createSignal<string[]>([]);
     const [form, setForm] = createStore({
         title: "",
         instructions: "",
@@ -33,7 +34,7 @@ export function PaperEditorPage() {
         shuffleQuestions: false,
         shuffleOptions: false,
     });
-    const [bankFilters, setBankFilters] = createStore({ keyword: "", questionType: "" });
+    const [bankFilters, setBankFilters] = createStore({ keyword: "", questionType: "", category: "" });
     const [bankPage, setBankPage] = createSignal(0);
     const [bankTotalPages, setBankTotalPages] = createSignal(0);
     const [bankLoading, setBankLoading] = createSignal(false);
@@ -62,7 +63,7 @@ export function PaperEditorPage() {
         });
     };
     const loadPaper = async () => applyPaper(await api.getPaperPreview(paperId()));
-    const loadBank = async (page: number, append: boolean, keyword: string, questionType: string) => {
+    const loadBank = async (page: number, append: boolean, keyword: string, questionType: string, category = "") => {
         setBankLoading(true);
         try {
             const result = await api.listQuestions({
@@ -70,6 +71,7 @@ export function PaperEditorPage() {
                 size: 20,
                 keyword: keyword.trim() || undefined,
                 questionType: (questionType || undefined) as QuestionType | undefined,
+                category: category || undefined,
                 status: "ACTIVE",
             });
             setQuestions((current) => append
@@ -90,6 +92,11 @@ export function PaperEditorPage() {
         }
     };
     createEffect(() => { if (Number.isFinite(paperId())) void load(); });
+    createEffect(() => {
+        void api.listQuestionCategories()
+            .then((result) => setCategories(result.map((item) => item.name)))
+            .catch(() => setCategories([]));
+    });
 
     const mutate = async (runner: () => Promise<PaperTemplateResponse>, message: string) => {
         if (busy() || !canEdit()) return;
@@ -167,7 +174,7 @@ export function PaperEditorPage() {
                     <div class="flex items-center justify-between"><h2 class="font-semibold">试卷题目</h2><p class="text-sm text-muted-foreground">{current().questionCount} 题 · {current().totalScore} 分</p></div>
                     <Show when={current().questions.length} fallback={<p class="py-8 text-center text-sm text-muted-foreground">{canEdit() ? "从右侧题库添加试题。" : "此试卷还没有题目。"}</p>}>
                         <For each={current().questions}>{(question, index) => <article class="grid gap-3 rounded-md border p-3 md:grid-cols-[40px_minmax(0,1fr)_100px_auto]">
-                            <div class="font-semibold">{question.questionOrder}</div><div><p class="font-medium">{question.stem}</p><Badge class="mt-2" variant="outline">{questionTypeLabels[question.questionType]}</Badge></div>
+                            <div class="font-semibold">{question.questionOrder}</div><div><p class="font-medium">{question.stem}</p><div class="mt-2 flex flex-wrap gap-2"><Badge variant="outline">{questionTypeLabels[question.questionType]}</Badge><Show when={question.category}><Badge variant="outline">{question.category}</Badge></Show></div></div>
                             <Show when={canEdit()} fallback={<p class="text-sm">{question.score} 分</p>}><label class="text-xs text-muted-foreground">分值<Input aria-label={`题目 ${question.questionOrder} 分值`} type="number" min="0.01" step="0.01" value={question.score} onChange={(e) => updateScore(question.id, e.currentTarget.value)} /></label></Show>
                             <Show when={canEdit()}><div class="flex gap-1"><Button size="icon" variant="ghost" aria-label={`上移题目 ${question.questionOrder}`} disabled={index() === 0 || busy()} onClick={() => move(question.id, -1)}><ArrowUp class="h-4 w-4" /></Button><Button size="icon" variant="ghost" aria-label={`下移题目 ${question.questionOrder}`} disabled={index() === current().questions.length - 1 || busy()} onClick={() => move(question.id, 1)}><ArrowDown class="h-4 w-4" /></Button><Button size="icon" variant="ghost" aria-label={`移除题目 ${question.questionOrder}`} disabled={busy()} onClick={() => window.confirm("确认从试卷移除此题？") && void mutate(() => api.removePaperQuestion(paperId(), question.id), "题目已移除。")}><Trash2 class="h-4 w-4" /></Button></div></Show>
                         </article>}</For>
@@ -175,12 +182,12 @@ export function PaperEditorPage() {
                 </div>
                 <Show when={canEdit()}><aside class="space-y-3 rounded-md border bg-background p-4">
                     <h2 class="font-semibold">可用题库</h2>
-                    <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]"><Input aria-label="编辑器题库搜索" placeholder="搜索 ACTIVE 题库" value={bankFilters.keyword} onInput={(e) => setBankFilters("keyword", e.currentTarget.value)} /><select aria-label="编辑器题型" class="h-10 rounded-md border bg-background px-3 text-sm" value={bankFilters.questionType} onChange={(e) => setBankFilters("questionType", e.currentTarget.value)}><option value="">全部题型</option><For each={Object.entries(questionTypeLabels)}>{([value, label]) => <option value={value}>{label}</option>}</For></select><Button variant="outline" disabled={bankLoading()} onClick={() => void loadBank(0, false, bankFilters.keyword, bankFilters.questionType)}><Search class="h-4 w-4" />搜索题库</Button></div>
-                    <div class="max-h-[620px] space-y-2 overflow-y-auto"><For each={questions().filter((item) => !current().questions.some((paperQuestion) => paperQuestion.sourceQuestionId === item.id))}>{(question) => <div class="rounded-md border p-3"><p class="text-sm font-medium">{question.stem}</p><div class="mt-2 flex items-center justify-between"><span class="text-xs text-muted-foreground">{questionTypeLabels[question.questionType]} · 默认 {question.defaultScore} 分</span><Button size="sm" aria-label={`添加试题 ${question.stem}`} disabled={busy()} onClick={() => void mutate(() => api.addPaperQuestion(paperId(), { questionId: question.id, score: question.defaultScore }), "试题已加入试卷。") }><Plus class="h-4 w-4" />添加</Button></div></div>}</For></div>
-                    <Show when={bankPage() + 1 < bankTotalPages()}><Button class="w-full" variant="outline" disabled={bankLoading()} onClick={() => void loadBank(bankPage() + 1, true, bankFilters.keyword, bankFilters.questionType)}>加载更多试题</Button></Show>
+                    <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_150px_auto]"><Input aria-label="编辑器题库搜索" placeholder="搜索 ACTIVE 题库" value={bankFilters.keyword} onInput={(e) => setBankFilters("keyword", e.currentTarget.value)} /><select aria-label="编辑器题型" class="h-10 rounded-md border bg-background px-3 text-sm" value={bankFilters.questionType} onChange={(e) => setBankFilters("questionType", e.currentTarget.value)}><option value="">全部题型</option><For each={Object.entries(questionTypeLabels)}>{([value, label]) => <option value={value}>{label}</option>}</For></select><select aria-label="编辑器类型" class="h-10 rounded-md border bg-background px-3 text-sm" value={bankFilters.category} onChange={(e) => setBankFilters("category", e.currentTarget.value)}><option value="">全部类型</option><For each={categories()}>{(category) => <option value={category}>{category}</option>}</For></select><Button variant="outline" disabled={bankLoading()} onClick={() => void loadBank(0, false, bankFilters.keyword, bankFilters.questionType, bankFilters.category)}><Search class="h-4 w-4" />搜索题库</Button></div>
+                    <div class="max-h-[620px] space-y-2 overflow-y-auto"><For each={questions().filter((item) => !current().questions.some((paperQuestion) => paperQuestion.sourceQuestionId === item.id))}>{(question) => <div class="rounded-md border p-3"><p class="text-sm font-medium">{question.stem}</p><div class="mt-2 flex items-center justify-between gap-3"><span class="text-xs text-muted-foreground">{question.category ? `${question.category} · ` : ""}{questionTypeLabels[question.questionType]} · 默认 {question.defaultScore} 分</span><Button size="sm" aria-label={`添加试题 ${question.stem}`} disabled={busy()} onClick={() => void mutate(() => api.addPaperQuestion(paperId(), { questionId: question.id, score: question.defaultScore }), "试题已加入试卷。") }><Plus class="h-4 w-4" />添加</Button></div></div>}</For></div>
+                    <Show when={bankPage() + 1 < bankTotalPages()}><Button class="w-full" variant="outline" disabled={bankLoading()} onClick={() => void loadBank(bankPage() + 1, true, bankFilters.keyword, bankFilters.questionType, bankFilters.category)}>加载更多试题</Button></Show>
                 </aside></Show>
             </div>
-            <Show when={previewing() || !canEdit()}><div class="rounded-md border bg-background p-5"><h2 class="text-xl font-semibold">{current().title}</h2><p class="mt-2 text-sm text-muted-foreground">{current().instructions || "无作答说明"}</p><ol class="mt-5 space-y-4"><For each={current().questions}>{(question) => <li><p class="font-medium">{question.questionOrder}. {question.stem} <span class="text-sm text-muted-foreground">({question.score} 分)</span></p><For each={Object.entries(question.options ?? {})}>{([key, value]) => <p class="ml-5 mt-1 text-sm">{key}：{value}</p>}</For></li>}</For></ol></div></Show>
+            <Show when={previewing() || !canEdit()}><div class="rounded-md border bg-background p-5"><h2 class="text-xl font-semibold">{current().title}</h2><p class="mt-2 text-sm text-muted-foreground">{current().instructions || "无作答说明"}</p><ol class="mt-5 space-y-4"><For each={current().questions}>{(question) => <li><p class="font-medium">{question.questionOrder}. {question.stem} <Show when={question.category}><span class="text-sm text-muted-foreground">[{question.category}] </span></Show><span class="text-sm text-muted-foreground">({question.score} 分)</span></p><For each={Object.entries(question.options ?? {})}>{([key, value]) => <p class="ml-5 mt-1 text-sm">{key}：{value}</p>}</For></li>}</For></ol></div></Show>
         </>}</Show>
     </section>;
 }

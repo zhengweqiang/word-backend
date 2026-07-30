@@ -20,6 +20,7 @@ public class PaperTemplateQuestionResponse {
     private Long sourceQuestionId;
     private Integer questionOrder;
     private QuestionType questionType;
+    private String category;
     private String stem;
     private Map<String, String> options;
     private List<String> acceptedAnswers;

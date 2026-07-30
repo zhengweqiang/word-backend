@@ -521,6 +521,7 @@ public class PaperReleaseService {
                 release.getStatus(),
                 release.getQuestionCount(),
                 release.getTotalScore(),
+                categories(release.getId()),
                 release.getShuffleQuestions(),
                 release.getShuffleOptions(),
                 release.getStartTime(),
@@ -541,6 +542,14 @@ public class PaperReleaseService {
                 release.getShowSupersededToStudents(),
                 release.getCreatedAt(),
                 targetResponses);
+    }
+
+    private List<String> categories(Long releaseId) {
+        return releaseQuestionRepository.findByPaperReleaseIdOrderByQuestionOrderAsc(releaseId).stream()
+                .map(PaperReleaseQuestion::getCategory)
+                .filter(category -> category != null && !category.isBlank())
+                .distinct()
+                .toList();
     }
 
     private record TimeWindow(LocalDateTime startTime, LocalDateTime deadline) {

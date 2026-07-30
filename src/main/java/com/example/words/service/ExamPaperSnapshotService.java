@@ -18,6 +18,7 @@ public class ExamPaperSnapshotService {
         snapshot.setSourceQuestionId(question.getId());
         snapshot.setQuestionOrder(questionOrder);
         snapshot.setQuestionType(question.getQuestionType());
+        snapshot.setCategory(question.getCategory());
         snapshot.setStem(question.getStem());
         snapshot.setOptionsJson(question.getOptionsJson());
         snapshot.setAcceptedAnswersJson(question.getAcceptedAnswersJson());
@@ -35,6 +36,7 @@ public class ExamPaperSnapshotService {
         snapshot.setSourceQuestionId(question.getSourceQuestionId());
         snapshot.setQuestionOrder(question.getQuestionOrder());
         snapshot.setQuestionType(question.getQuestionType());
+        snapshot.setCategory(question.getCategory());
         snapshot.setStem(question.getStem());
         snapshot.setOptionsJson(question.getOptionsJson());
         snapshot.setAcceptedAnswersJson(question.getAcceptedAnswersJson());

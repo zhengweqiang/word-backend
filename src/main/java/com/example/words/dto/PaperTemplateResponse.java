@@ -25,6 +25,7 @@ public class PaperTemplateResponse {
     private Boolean shuffleOptions;
     private BigDecimal totalScore;
     private Integer questionCount;
+    private List<String> categories;
     private List<PaperTemplateQuestionResponse> questions;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

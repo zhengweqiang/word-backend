@@ -61,7 +61,7 @@ public class QuestionImportService {
     private static final List<String> REQUIRED_HEADERS = List.of(
             "questionType", "stem", "correctAnswers", "score");
     private static final Set<String> SUPPORTED_HEADERS = Set.of(
-            "questionType", "stem", "optionA", "optionB", "optionC", "optionD",
+            "questionType", "category", "stem", "optionA", "optionB", "optionC", "optionD",
             "correctAnswers", "score", "difficulty", "tags", "explanation", "dictionaryName", "word");
     private static final TypeReference<LinkedHashMap<String, String>> STRING_MAP_TYPE = new TypeReference<>() {
     };
@@ -271,6 +271,7 @@ public class QuestionImportService {
 
             CreateQuestionRequest request = new CreateQuestionRequest(
                     questionType,
+                    rawRow.get("category"),
                     rawRow.get("stem"),
                     options,
                     answers,
@@ -308,6 +309,7 @@ public class QuestionImportService {
             Integer difficulty,
             List<String> tags) {
         row.setQuestionType(questionType);
+        row.setCategory(trimToNull(rawRow.get("category")));
         row.setStem(trimToNull(rawRow.get("stem")));
         row.setOptionsJson(writeJson(options, "question options"));
         row.setAcceptedAnswersJson(writeJson(answers, "accepted answers"));
@@ -319,6 +321,7 @@ public class QuestionImportService {
 
     private void applyNormalized(QuestionImportPreviewRow row, QuestionBankService.ValidatedQuestion normalized) {
         row.setQuestionType(normalized.questionType());
+        row.setCategory(normalized.category());
         row.setStem(normalized.stem());
         row.setOptionsJson(writeJson(normalized.options(), "question options"));
         row.setAcceptedAnswersJson(writeJson(normalized.acceptedAnswers(), "accepted answers"));
@@ -513,6 +516,7 @@ public class QuestionImportService {
     private CreateQuestionRequest toCreateRequest(QuestionImportPreviewRow row) {
         return new CreateQuestionRequest(
                 row.getQuestionType(),
+                row.getCategory(),
                 row.getStem(),
                 readMap(row.getOptionsJson(), "question options"),
                 readList(row.getAcceptedAnswersJson(), "accepted answers"),
@@ -545,6 +549,7 @@ public class QuestionImportService {
                 row.getRowNumber(),
                 row.getStatus(),
                 row.getQuestionType(),
+                row.getCategory(),
                 row.getStem(),
                 readMap(row.getOptionsJson(), "question options"),
                 readList(row.getAcceptedAnswersJson(), "accepted answers"),

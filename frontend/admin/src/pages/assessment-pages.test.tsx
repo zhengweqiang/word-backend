@@ -28,7 +28,8 @@ vi.mock("@solidjs/router", async () => {
 
 vi.mock("@/lib/api", () => ({
     api: {
-        listQuestions: vi.fn(), createQuestion: vi.fn(), updateQuestion: vi.fn(), copyQuestion: vi.fn(), archiveQuestion: vi.fn(),
+        listQuestions: vi.fn(), listQuestionBankCategories: vi.fn(), createQuestion: vi.fn(), updateQuestion: vi.fn(), copyQuestion: vi.fn(), archiveQuestion: vi.fn(),
+        listQuestionCategories: vi.fn(), createQuestionCategory: vi.fn(), updateQuestionCategory: vi.fn(), deleteQuestionCategory: vi.fn(),
         previewQuestionImport: vi.fn(), getQuestionImport: vi.fn(), confirmQuestionImport: vi.fn(),
         listPapers: vi.fn(), createPaper: vi.fn(), updatePaper: vi.fn(), getPaperPreview: vi.fn(), copyPaper: vi.fn(), archivePaper: vi.fn(),
         addPaperQuestion: vi.fn(), reorderPaperQuestions: vi.fn(), updatePaperQuestionScore: vi.fn(), removePaperQuestion: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock("@/features/auth/auth-context", () => ({
 const emptyPage = { content: [], totalElements: 0, totalPages: 0, size: 20, number: 0, numberOfElements: 0 };
 const question = {
     id: 1, questionType: "SINGLE_CHOICE" as const, stem: "abandon 的词义是？",
+    category: "Listening",
     options: { A: "放弃", B: "获得" }, acceptedAnswers: ["A"], defaultScore: 2,
     difficulty: 2, tags: ["四级"], explanation: "核心词义", createdByUserId: 7,
     status: "ACTIVE" as const, createdAt: "2026-07-29T09:00:00",
@@ -52,12 +54,12 @@ const question = {
 const paper = {
     id: 42, title: "四级周测", instructions: "独立完成", ownerUserId: 7,
     status: "DRAFT" as const, shuffleQuestions: false, shuffleOptions: false,
-    totalScore: 0, questionCount: 0, questions: [],
+    totalScore: 0, questionCount: 0, categories: ["Listening"], questions: [],
 };
 const release = {
     id: 77, paperTemplateId: 42, title: "四级周测", publishedByUserId: 7,
     status: "OPEN" as const, questionCount: 1, totalScore: 2, shuffleQuestions: false,
-    shuffleOptions: false, blankAnswerPolicy: "ALLOW_BLANK" as const,
+    shuffleOptions: false, categories: ["Listening"], blankAnswerPolicy: "ALLOW_BLANK" as const,
     resultVisibility: "HIDDEN_UNTIL_RELEASED" as const, createdAt: "2026-07-29T09:00:00",
     targets: [{ id: 701, studentId: 12, sourceClassroomIds: [31], attemptId: 501, attemptStatus: "SUBMITTED_LATE" as const }],
 };
@@ -73,10 +75,15 @@ describe("teacher assessment pages", () => {
         vi.mocked(api.updateQuestion).mockResolvedValue(question);
         vi.mocked(api.copyQuestion).mockResolvedValue({ ...question, id: 2 });
         vi.mocked(api.archiveQuestion).mockResolvedValue(undefined);
+        vi.mocked(api.listQuestionBankCategories).mockResolvedValue(["Listening"]);
+        vi.mocked(api.listQuestionCategories).mockResolvedValue([{ id: 1, name: "Listening", createdByUserId: 7 }]);
+        vi.mocked(api.createQuestionCategory).mockResolvedValue({ id: 2, name: "Reading", createdByUserId: 7 });
+        vi.mocked(api.updateQuestionCategory).mockResolvedValue({ id: 1, name: "Reading", createdByUserId: 7 });
+        vi.mocked(api.deleteQuestionCategory).mockResolvedValue(undefined);
         vi.mocked(api.previewQuestionImport).mockResolvedValue({
             batchId: 9, fileName: "questions.csv", totalRows: 2, validRows: 1, invalidRows: 1, duplicateRows: 0,
             status: "PREVIEWED", rows: [
-                { id: 91, rowNumber: 2, status: "VALID", questionType: "FILL_IN_BLANK", stem: "拼写 abandon", acceptedAnswers: ["abandon"], score: 2 },
+                { id: 91, rowNumber: 2, status: "VALID", questionType: "FILL_IN_BLANK", category: "Listening", stem: "拼写 abandon", acceptedAnswers: ["abandon"], score: 2 },
                 { id: 92, rowNumber: 3, status: "INVALID", stem: "", message: "题干不能为空" },
             ],
         });
@@ -110,15 +117,17 @@ describe("teacher assessment pages", () => {
             submittedLateCount: 1, completedCount: 1, resultVisibility: "HIDDEN_UNTIL_RELEASED",
             resultsReleased: false, students: [{ releaseId: 77, attemptId: 501, studentId: 12, studentUsername: "student_api_20260729", status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, questions: [] } as any],
         });
-        vi.mocked(api.getPaperReleaseQuestionStats).mockResolvedValue([{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, submissionCount: 1, answeredCount: 1, correctCount: 1, correctnessRate: 100 }]);
-        vi.mocked(api.getPaperReleaseStudentResult).mockResolvedValue({ releaseId: 77, attemptId: 501, studentId: 12, studentUsername: "student_api_20260729", status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, submittedAt: "2026-07-29T11:00:00", questions: [{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", stem: question.stem, options: question.options, selectedAnswers: ["A"], blankAnswers: [], correct: true, earnedScore: 2, questionScore: 2, acceptedAnswers: ["A"], explanation: "核心词义" }] });
+        vi.mocked(api.getPaperReleaseQuestionStats).mockResolvedValue([{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", category: "Listening", stem: question.stem, submissionCount: 1, answeredCount: 1, correctCount: 1, correctnessRate: 100 }]);
+        vi.mocked(api.getPaperReleaseStudentResult).mockResolvedValue({ releaseId: 77, attemptId: 501, studentId: 12, studentUsername: "student_api_20260729", status: "SUBMITTED_LATE", late: true, answeredCount: 1, correctCount: 1, earnedScore: 2, totalScore: 2, scorePercentage: 100, submittedAt: "2026-07-29T11:00:00", questions: [{ releaseQuestionId: 801, questionOrder: 1, questionType: "SINGLE_CHOICE", category: "Listening", stem: question.stem, options: question.options, selectedAnswers: ["A"], blankAnswers: [], correct: true, earnedScore: 2, questionScore: 2, acceptedAnswers: ["A"], explanation: "核心词义" }] });
     });
 
     it("creates a question from structured option, answer, and tag fields", async () => {
         render(() => <QuestionBankPage />);
+        await screen.findByRole("option", { name: "Listening" });
         fireEvent.click(await screen.findByRole("button", { name: "新建试题" }));
         const form = screen.getByRole("form", { name: "试题表单" });
         fireEvent.input(within(form).getByLabelText("题干"), { target: { value: "新的单选题" } });
+        fireEvent.change(within(form).getByLabelText("类型"), { target: { value: "Listening" } });
         fireEvent.input(within(form).getByLabelText("选项 A"), { target: { value: "答案一" } });
         fireEvent.input(within(form).getByLabelText("选项 B"), { target: { value: "答案二" } });
         fireEvent.input(within(form).getByLabelText("正确答案"), { target: { value: "A" } });
@@ -127,7 +136,17 @@ describe("teacher assessment pages", () => {
 
         await waitFor(() => expect(api.createQuestion).toHaveBeenCalledWith(expect.objectContaining({
             stem: "新的单选题", options: { A: "答案一", B: "答案二" }, acceptedAnswers: ["A"], tags: ["四级", "核心"],
+            category: "Listening",
         })));
+    });
+
+    it("renders category filter options from existing question bank categories", async () => {
+        vi.mocked(api.listQuestionCategories).mockResolvedValue([]);
+        vi.mocked(api.listQuestionBankCategories).mockResolvedValue(["CSV Only"]);
+
+        render(() => <QuestionBankPage />);
+
+        expect(await screen.findByRole("option", { name: "CSV Only" })).toBeInTheDocument();
     });
 
     it("creates and renders FILL_IN_BLANK with multiple pipe-separated accepted answers", async () => {
@@ -203,10 +222,12 @@ describe("teacher assessment pages", () => {
         fireEvent.click(screen.getByRole("button", { name: "预览导入" }));
 
         expect(await screen.findByText("填空题")).toBeInTheDocument();
+        expect(screen.getByText("Listening")).toBeInTheDocument();
         expect(screen.queryByText("FILL_IN_BLANK")).not.toBeInTheDocument();
         expect(screen.getByRole("columnheader", { name: "选择" })).toHaveClass("w-24", "whitespace-nowrap");
         expect(screen.getByRole("columnheader", { name: "状态" })).toHaveClass("w-28", "whitespace-nowrap");
         expect(screen.getByRole("columnheader", { name: "题型" })).toHaveClass("w-32", "whitespace-nowrap");
+        expect(screen.getByRole("columnheader", { name: "类型" })).toHaveClass("w-32", "whitespace-nowrap");
         expect(screen.getByRole("columnheader", { name: "题干" })).toHaveClass("w-[28rem]");
         expect(screen.getByRole("columnheader", { name: "校验信息" })).toHaveClass("w-28", "whitespace-nowrap");
     });

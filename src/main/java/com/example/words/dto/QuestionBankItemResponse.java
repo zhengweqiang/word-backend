@@ -19,6 +19,7 @@ public class QuestionBankItemResponse {
 
     private Long id;
     private QuestionType questionType;
+    private String category;
     private String stem;
     private Map<String, String> options;
     private List<String> acceptedAnswers;

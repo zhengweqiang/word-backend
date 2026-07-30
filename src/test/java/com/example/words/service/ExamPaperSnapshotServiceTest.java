@@ -26,6 +26,7 @@ class ExamPaperSnapshotServiceTest {
         source.setOptionsJson("[\"Z\"]");
         source.setAcceptedAnswersJson("[\"Z\"]");
         source.setExplanation("changed explanation");
+        source.setCategory("写作");
         source.setDictionaryId(99L);
         source.setMetaWordId(98L);
 
@@ -38,6 +39,7 @@ class ExamPaperSnapshotServiceTest {
                 () -> assertEquals("[\"A\",\"B\"]", snapshot.getOptionsJson()),
                 () -> assertEquals("[\"A\"]", snapshot.getAcceptedAnswersJson()),
                 () -> assertEquals("original explanation", snapshot.getExplanation()),
+                () -> assertEquals("听力", snapshot.getCategory()),
                 () -> assertEquals(new BigDecimal("2.50"), snapshot.getScore()),
                 () -> assertEquals(11L, snapshot.getDictionaryId()),
                 () -> assertEquals(12L, snapshot.getMetaWordId())
@@ -53,6 +55,7 @@ class ExamPaperSnapshotServiceTest {
         source.setOptionsJson("[\"Z\"]");
         source.setAcceptedAnswersJson("[\"Z\"]");
         source.setExplanation("changed explanation");
+        source.setCategory("写作");
         source.setScore(BigDecimal.TEN);
         source.setDictionaryId(99L);
         source.setMetaWordId(98L);
@@ -67,6 +70,7 @@ class ExamPaperSnapshotServiceTest {
                 () -> assertEquals("[\"A\",\"B\"]", snapshot.getOptionsJson()),
                 () -> assertEquals("[\"A\"]", snapshot.getAcceptedAnswersJson()),
                 () -> assertEquals("original explanation", snapshot.getExplanation()),
+                () -> assertEquals("听力", snapshot.getCategory()),
                 () -> assertEquals(new BigDecimal("2.50"), snapshot.getScore()),
                 () -> assertEquals(11L, snapshot.getDictionaryId()),
                 () -> assertEquals(12L, snapshot.getMetaWordId())
@@ -77,6 +81,7 @@ class ExamPaperSnapshotServiceTest {
         QuestionBankItem question = new QuestionBankItem();
         question.setId(41L);
         question.setQuestionType(QuestionType.SINGLE_CHOICE);
+        question.setCategory("听力");
         question.setStem("original stem");
         question.setOptionsJson("[\"A\",\"B\"]");
         question.setAcceptedAnswersJson("[\"A\"]");
@@ -92,6 +97,7 @@ class ExamPaperSnapshotServiceTest {
         question.setSourceQuestionId(41L);
         question.setQuestionOrder(3);
         question.setQuestionType(QuestionType.SINGLE_CHOICE);
+        question.setCategory("听力");
         question.setStem("original stem");
         question.setOptionsJson("[\"A\",\"B\"]");
         question.setAcceptedAnswersJson("[\"A\"]");
