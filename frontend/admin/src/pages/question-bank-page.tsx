@@ -1,4 +1,4 @@
-import { Archive, Copy, Eye, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-solid";
+import { Archive, Copy, Eye, Pencil, Plus, RefreshCw, Search } from "lucide-solid";
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import { AssessmentNav } from "@/components/assessments/assessment-nav";
@@ -16,6 +16,7 @@ import { parseAcceptedAnswers, questionTypeLabels, validateQuestionDraft } from 
 import type { QuestionBankItemResponse, QuestionPayload, QuestionStatus, QuestionType } from "@/types/api";
 
 const statusLabels: Record<QuestionStatus, string> = { DRAFT: "草稿", ACTIVE: "可用", ARCHIVED: "已归档" };
+const PAGE_SIZE = 20;
 
 const emptyForm = () => ({
     questionType: "SINGLE_CHOICE" as QuestionType,
@@ -28,7 +29,9 @@ export function QuestionBankPage() {
     const auth = useAuth();
     const [filters, setFilters] = createStore({ keyword: "", questionType: "", category: "", status: "ACTIVE", tag: "" });
     const [items, setItems] = createSignal<QuestionBankItemResponse[]>([]);
-    const [categories, setCategories] = createSignal<string[]>([]);
+    const [page, setPage] = createSignal(0);
+    const [totalPages, setTotalPages] = createSignal(0);
+    const [totalElements, setTotalElements] = createSignal(0);
     const [categoryOptions, setCategoryOptions] = createSignal<string[]>([]);
     const [selected, setSelected] = createSignal<QuestionBankItemResponse | null>(null);
     const [editingId, setEditingId] = createSignal<number | null>(null);
@@ -36,28 +39,41 @@ export function QuestionBankPage() {
     const [form, setForm] = createStore(emptyForm());
     const [loading, setLoading] = createSignal(false);
     const [saving, setSaving] = createSignal(false);
-    const [categoryName, setCategoryName] = createSignal("");
-    const [editingCategory, setEditingCategory] = createSignal("");
-    const [categoryBusy, setCategoryBusy] = createSignal(false);
     const [error, setError] = createSignal("");
     const [feedback, setFeedback] = createSignal("");
+    let loadSequence = 0;
 
-    const load = async () => {
+    const load = async (requestedPage: number) => {
+        const requestSequence = ++loadSequence;
         setLoading(true); setError("");
         try {
-            const result = await api.listQuestions({
-                page: 0, size: 100, keyword: filters.keyword || undefined,
+            const requestPage = (targetPage: number) => api.listQuestions({
+                page: targetPage, size: PAGE_SIZE, keyword: filters.keyword || undefined,
                 questionType: (filters.questionType || undefined) as QuestionType | undefined,
                 category: filters.category || undefined,
                 status: (filters.status || undefined) as QuestionStatus | undefined,
                 tag: filters.tag || undefined,
             });
+            let result = await requestPage(requestedPage);
+            if (requestSequence !== loadSequence) return;
+            if (!result.content.length && requestedPage > 0 && result.totalElements > 0) {
+                result = await requestPage(requestedPage - 1);
+                if (requestSequence !== loadSequence) return;
+            }
+            setPage(result.number);
+            setTotalPages(result.totalPages);
+            setTotalElements(result.totalElements);
             setItems(result.content);
             if (selected() && !result.content.some((item) => item.id === selected()?.id)) setSelected(null);
-        } catch (cause) { setError(cause instanceof Error ? cause.message : "加载题库失败。"); }
-        finally { setLoading(false); }
+        } catch (cause) {
+            if (requestSequence === loadSequence) {
+                setError(cause instanceof Error ? cause.message : "加载题库失败。");
+            }
+        } finally {
+            if (requestSequence === loadSequence) setLoading(false);
+        }
     };
-    createEffect(() => { void load(); });
+    createEffect(() => { void load(0); });
 
     const loadCategories = async () => {
         try {
@@ -66,45 +82,10 @@ export function QuestionBankPage() {
                 api.listQuestionBankCategories(),
             ]);
             const recordNames = records.map((item) => item.name);
-            setCategories(recordNames);
             setCategoryOptions(Array.from(new Set([...recordNames, ...bankCategories])).sort((a, b) => a.localeCompare(b)));
         } catch (cause) { setError(cause instanceof Error ? cause.message : "加载类型失败。"); }
     };
     createEffect(() => { void loadCategories(); });
-
-    const saveCategory = async () => {
-        const name = categoryName().trim();
-        if (!name || categoryBusy()) return;
-        setCategoryBusy(true); setError(""); setFeedback("");
-        try {
-            const editing = editingCategory();
-            if (editing) {
-                const current = (await api.listQuestionCategories()).find((item) => item.name === editing);
-                if (!current) throw new Error("类型不存在或已删除。");
-                await api.updateQuestionCategory(current.id, { name });
-                setFeedback("类型已更新。");
-            } else {
-                await api.createQuestionCategory({ name });
-                setFeedback("类型已创建。");
-            }
-            setCategoryName(""); setEditingCategory(""); await loadCategories(); await load();
-        } catch (cause) { setError(cause instanceof Error ? cause.message : "保存类型失败。"); }
-        finally { setCategoryBusy(false); }
-    };
-
-    const deleteCategory = async (name: string) => {
-        if (!window.confirm(`确认删除类型“${name}”？`)) return;
-        setCategoryBusy(true); setError(""); setFeedback("");
-        try {
-            const current = (await api.listQuestionCategories()).find((item) => item.name === name);
-            if (!current) throw new Error("类型不存在或已删除。");
-            await api.deleteQuestionCategory(current.id);
-            if (filters.category === name) setFilters("category", "");
-            if (form.category === name) setForm("category", "");
-            setFeedback("类型已删除。"); await loadCategories(); await load();
-        } catch (cause) { setError(cause instanceof Error ? cause.message : "删除类型失败。"); }
-        finally { setCategoryBusy(false); }
-    };
 
     const openCreate = () => {
         setEditingId(null); setForm(emptyForm()); setShowForm(true); setError("");
@@ -157,18 +138,18 @@ export function QuestionBankPage() {
             }
             const id = editingId();
             await (id ? api.updateQuestion(id, body) : api.createQuestion(body));
-            setFeedback(id ? "试题已更新。" : "试题已创建。"); setShowForm(false); await load();
+            setFeedback(id ? "试题已更新。" : "试题已创建。"); setShowForm(false); await load(page());
         } catch (cause) { setError(cause instanceof Error ? cause.message : "保存试题失败。"); }
         finally { setSaving(false); }
     };
     const copyItem = async (item: QuestionBankItemResponse) => {
         setError("");
-        try { await api.copyQuestion(item.id, { stem: `${item.stem}（副本）` }); setFeedback("试题副本已创建。"); await load(); }
+        try { await api.copyQuestion(item.id, { stem: `${item.stem}（副本）` }); setFeedback("试题副本已创建。"); await load(page()); }
         catch (cause) { setError(cause instanceof Error ? cause.message : "复制试题失败。"); }
     };
     const archiveItem = async (item: QuestionBankItemResponse) => {
         if (!window.confirm(`确认归档“${item.stem}”？`)) return;
-        try { await api.archiveQuestion(item.id); setFeedback("试题已归档。"); await load(); }
+        try { await api.archiveQuestion(item.id); setFeedback("试题已归档。"); await load(page()); }
         catch (cause) { setError(cause instanceof Error ? cause.message : "归档试题失败。"); }
     };
     const canManage = (item: QuestionBankItemResponse) => auth.user()?.role === "ADMIN"
@@ -178,9 +159,9 @@ export function QuestionBankPage() {
         <section class="space-y-5">
             <AssessmentNav />
             <PageHeader eyebrow="ASSESSMENT BANK" title="共享题库" description="检索、维护并复用客观题，保留来源和修改记录。" actions={
-                <div class="flex gap-2"><Button variant="outline" aria-label="刷新题库" onClick={() => void load()}><RefreshCw class="h-4 w-4" /></Button><Button onClick={openCreate}><Plus class="h-4 w-4" />新建试题</Button></div>
+                <div class="flex gap-2"><Button variant="outline" aria-label="刷新题库" onClick={() => void load(page())}><RefreshCw class="h-4 w-4" /></Button><Button onClick={openCreate}><Plus class="h-4 w-4" />新建试题</Button></div>
             } />
-            <Show when={error()}><Alert class="flex items-center justify-between gap-3 border-destructive/30 bg-destructive/10 text-destructive"><span>{error()}</span><Button type="button" size="sm" variant="outline" aria-label="重试加载题库" onClick={() => void load()}><RefreshCw class="h-4 w-4" />重试</Button></Alert></Show>
+            <Show when={error()}><Alert class="flex items-center justify-between gap-3 border-destructive/30 bg-destructive/10 text-destructive"><span>{error()}</span><Button type="button" size="sm" variant="outline" aria-label="重试加载题库" onClick={() => void load(page())}><RefreshCw class="h-4 w-4" />重试</Button></Alert></Show>
             <Show when={feedback()}><Alert class="border-success/30 bg-success/10 text-success">{feedback()}</Alert></Show>
             <div class="grid gap-3 rounded-md border bg-background p-3 lg:grid-cols-[minmax(220px,1fr)_170px_170px_150px_180px_auto]">
                 <Input aria-label="关键词" placeholder="搜索题干或解析" value={filters.keyword} onInput={(e) => setFilters("keyword", e.currentTarget.value)} />
@@ -188,29 +169,27 @@ export function QuestionBankPage() {
                 <select aria-label="类型筛选" class="h-10 rounded-md border bg-background px-3 text-sm" value={filters.category} onChange={(e) => setFilters("category", e.currentTarget.value)}><option value="">全部类型</option><For each={categoryOptions()}>{(category) => <option value={category}>{category}</option>}</For></select>
                 <select aria-label="状态筛选" class="h-10 rounded-md border bg-background px-3 text-sm" value={filters.status} onChange={(e) => setFilters("status", e.currentTarget.value)}><option value="">全部状态</option><For each={Object.entries(statusLabels)}>{([value, label]) => <option value={value}>{label}</option>}</For></select>
                 <Input aria-label="标签筛选" placeholder="标签" value={filters.tag} onInput={(e) => setFilters("tag", e.currentTarget.value)} />
-                <Button variant="outline" onClick={() => void load()}><Search class="h-4 w-4" />筛选</Button>
-            </div>
-            <div class="space-y-3 rounded-md border bg-background p-4">
-                <div class="flex flex-wrap items-end gap-3">
-                    <div class="min-w-[220px] flex-1 space-y-2">
-                        <Label for="question-category-name">类型名称</Label>
-                        <Input id="question-category-name" value={categoryName()} onInput={(e) => setCategoryName(e.currentTarget.value)} />
-                    </div>
-                    <Button type="button" disabled={categoryBusy() || !categoryName().trim()} onClick={() => void saveCategory()}><Plus class="h-4 w-4" />{editingCategory() ? "保存类型" : "新增类型"}</Button>
-                    <Show when={editingCategory()}><Button type="button" variant="outline" onClick={() => { setEditingCategory(""); setCategoryName(""); }}>取消编辑</Button></Show>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <For each={categories()} fallback={<p class="text-sm text-muted-foreground">暂无类型记录</p>}>{(category) => <span class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm"><button type="button" class="font-medium" onClick={() => { setEditingCategory(category); setCategoryName(category); }}>{category}</button><button type="button" aria-label={`删除类型 ${category}`} disabled={categoryBusy()} onClick={() => void deleteCategory(category)}><Trash2 class="h-3.5 w-3.5 text-muted-foreground" /></button></span>}</For>
-                </div>
+                <Button variant="outline" onClick={() => void load(0)}><Search class="h-4 w-4" />筛选</Button>
             </div>
             <div class="grid min-h-[420px] gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.8fr)]">
-                <div data-testid="question-table-scroll" class="overflow-x-auto rounded-md border bg-background">
-                    <Show when={!loading()} fallback={<p class="p-5 text-sm text-muted-foreground">正在加载题库...</p>}>
-                        <Show when={items().length} fallback={<EmptyState title="没有匹配试题" description="调整筛选条件或创建一条新试题。" />}>
-                            <table class="w-full min-w-[860px] text-left text-sm"><thead class="bg-muted/70 text-xs text-muted-foreground"><tr><th class="px-3 py-2">题型</th><th class="px-3 py-2">类型</th><th class="px-3 py-2">题干</th><th class="px-3 py-2">分值</th><th class="px-3 py-2">状态</th><th class="px-3 py-2 text-right">操作</th></tr></thead><tbody>
-                                <For each={items()}>{(item) => <tr class="border-t align-top"><td class="px-3 py-3 whitespace-nowrap">{questionTypeLabels[item.questionType]}</td><td class="px-3 py-3 whitespace-nowrap">{item.category || "-"}</td><td class="max-w-xl px-3 py-3"><p class="font-medium">{item.stem}</p><p class="mt-1 text-xs text-muted-foreground">{(item.tags ?? []).join(" · ") || "无标签"}</p></td><td class="px-3 py-3">{item.defaultScore}</td><td class="px-3 py-3"><Badge variant="outline">{statusLabels[item.status]}</Badge></td><td class="px-3 py-2"><div class="flex justify-end gap-1"><Button size="icon" variant="ghost" title="预览" aria-label={`预览 ${item.stem}`} onClick={() => setSelected(item)}><Eye class="h-4 w-4" /></Button><Show when={canManage(item)}><Button size="icon" variant="ghost" title="编辑" aria-label={`编辑 ${item.stem}`} onClick={() => openEdit(item)}><Pencil class="h-4 w-4" /></Button></Show><Button size="icon" variant="ghost" title="复制" aria-label={`复制 ${item.stem}`} onClick={() => void copyItem(item)}><Copy class="h-4 w-4" /></Button><Show when={canManage(item) && item.status !== "ARCHIVED"}><Button size="icon" variant="ghost" title="归档" aria-label={`归档 ${item.stem}`} onClick={() => void archiveItem(item)}><Archive class="h-4 w-4" /></Button></Show></div></td></tr>}</For>
-                            </tbody></table>
+                <div class="space-y-3">
+                    <div data-testid="question-table-scroll" class="overflow-x-auto rounded-md border bg-background">
+                        <Show when={!loading()} fallback={<p class="p-5 text-sm text-muted-foreground">正在加载题库...</p>}>
+                            <Show when={items().length} fallback={<EmptyState title="没有匹配试题" description="调整筛选条件或创建一条新试题。" />}>
+                                <table class="w-full min-w-[860px] text-left text-sm"><thead class="bg-muted/70 text-xs text-muted-foreground"><tr><th class="px-3 py-2">题型</th><th class="px-3 py-2">类型</th><th class="px-3 py-2">题干</th><th class="px-3 py-2">分值</th><th class="px-3 py-2">状态</th><th class="px-3 py-2 text-right">操作</th></tr></thead><tbody>
+                                    <For each={items()}>{(item) => <tr class="border-t align-top"><td class="px-3 py-3 whitespace-nowrap">{questionTypeLabels[item.questionType]}</td><td class="px-3 py-3 whitespace-nowrap">{item.category || "-"}</td><td class="max-w-xl px-3 py-3"><p class="font-medium">{item.stem}</p><p class="mt-1 text-xs text-muted-foreground">{(item.tags ?? []).join(" · ") || "无标签"}</p></td><td class="px-3 py-3">{item.defaultScore}</td><td class="px-3 py-3"><Badge variant="outline">{statusLabels[item.status]}</Badge></td><td class="px-3 py-2"><div class="flex justify-end gap-1"><Button size="icon" variant="ghost" title="预览" aria-label={`预览 ${item.stem}`} onClick={() => setSelected(item)}><Eye class="h-4 w-4" /></Button><Show when={canManage(item)}><Button size="icon" variant="ghost" title="编辑" aria-label={`编辑 ${item.stem}`} onClick={() => openEdit(item)}><Pencil class="h-4 w-4" /></Button></Show><Button size="icon" variant="ghost" title="复制" aria-label={`复制 ${item.stem}`} onClick={() => void copyItem(item)}><Copy class="h-4 w-4" /></Button><Show when={canManage(item) && item.status !== "ARCHIVED"}><Button size="icon" variant="ghost" title="归档" aria-label={`归档 ${item.stem}`} onClick={() => void archiveItem(item)}><Archive class="h-4 w-4" /></Button></Show></div></td></tr>}</For>
+                                </tbody></table>
+                            </Show>
                         </Show>
+                    </div>
+                    <Show when={totalElements() > 0}>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <p class="text-sm text-muted-foreground">第 {page() + 1} / {totalPages()} 页，共 {totalElements()} 条</p>
+                            <div class="flex gap-2">
+                                <Button type="button" variant="outline" disabled={loading() || page() === 0} onClick={() => void load(page() - 1)}>上一页</Button>
+                                <Button type="button" variant="outline" disabled={loading() || page() + 1 >= totalPages()} onClick={() => void load(page() + 1)}>下一页</Button>
+                            </div>
+                        </div>
                     </Show>
                 </div>
                 <aside class="rounded-md border bg-background p-4">

@@ -64,6 +64,12 @@ const release = {
     targets: [{ id: 701, studentId: 12, sourceClassroomIds: [31], attemptId: 501, attemptStatus: "SUBMITTED_LATE" as const }],
 };
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+    return { promise, resolve };
+}
+
 describe("teacher assessment pages", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -147,6 +153,122 @@ describe("teacher assessment pages", () => {
         render(() => <QuestionBankPage />);
 
         expect(await screen.findByRole("option", { name: "CSV Only" })).toBeInTheDocument();
+    });
+
+    it("hides category management while keeping category filtering", async () => {
+        render(() => <QuestionBankPage />);
+
+        expect(await screen.findByRole("option", { name: "Listening" })).toBeInTheDocument();
+        expect(screen.getByLabelText("类型筛选")).toBeInTheDocument();
+        expect(screen.queryByLabelText("类型名称")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "新增类型" })).not.toBeInTheDocument();
+    });
+
+    it("paginates the shared question bank with server page metadata", async () => {
+        const secondPageQuestion = { ...question, id: 24, stem: "第二页试题" };
+        vi.mocked(api.listQuestions).mockImplementation(async (params) => ({
+            ...emptyPage,
+            content: params.page === 1 ? [secondPageQuestion] : [question],
+            totalElements: 24,
+            totalPages: 2,
+            number: params.page ?? 0,
+            numberOfElements: params.page === 1 ? 4 : 20,
+        }));
+
+        render(() => <QuestionBankPage />);
+
+        expect(await screen.findByText("第 1 / 2 页，共 24 条")).toBeInTheDocument();
+        await waitFor(() => expect(api.listQuestions).toHaveBeenCalledWith(expect.objectContaining({
+            page: 0,
+            size: 20,
+        })));
+        expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "下一页" })).toBeEnabled();
+
+        fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+
+        expect(await screen.findByText("第二页试题")).toBeInTheDocument();
+        expect(screen.getByText("第 2 / 2 页，共 24 条")).toBeInTheDocument();
+        await waitFor(() => expect(api.listQuestions).toHaveBeenCalledWith(expect.objectContaining({
+            page: 1,
+            size: 20,
+        })));
+        expect(screen.getByRole("button", { name: "上一页" })).toBeEnabled();
+        expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+
+        fireEvent.click(screen.getByRole("button", { name: "上一页" }));
+        await waitFor(() => expect(api.listQuestions).toHaveBeenCalledWith(expect.objectContaining({ page: 0, size: 20 })));
+        expect(await screen.findByText(question.stem)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+        await screen.findByText("第二页试题");
+        fireEvent.input(screen.getByLabelText("关键词"), { target: { value: "筛选词" } });
+        fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+        await waitFor(() => expect(api.listQuestions).toHaveBeenCalledWith(expect.objectContaining({
+            page: 0,
+            size: 20,
+            keyword: "筛选词",
+        })));
+    });
+
+    it("keeps the newest question-bank response when an older request finishes later", async () => {
+        const slowRequest = deferred<Awaited<ReturnType<typeof api.listQuestions>>>();
+        const oldQuestion = { ...question, id: 31, stem: "旧结果" };
+        const newQuestion = { ...question, id: 32, stem: "新结果" };
+        vi.mocked(api.listQuestions).mockImplementation((params) => {
+            if (!params.keyword) return slowRequest.promise;
+            return Promise.resolve({
+                ...emptyPage,
+                content: [newQuestion],
+                totalElements: 1,
+                totalPages: 1,
+                numberOfElements: 1,
+            });
+        });
+
+        render(() => <QuestionBankPage />);
+        fireEvent.input(screen.getByLabelText("关键词"), { target: { value: "新结果" } });
+        fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+        expect(await screen.findByText("新结果")).toBeInTheDocument();
+
+        slowRequest.resolve({
+            ...emptyPage,
+            content: [oldQuestion],
+            totalElements: 1,
+            totalPages: 1,
+            numberOfElements: 1,
+        });
+        await slowRequest.promise;
+        await Promise.resolve();
+
+        expect(screen.queryByText("旧结果")).not.toBeInTheDocument();
+        expect(screen.getByText("新结果")).toBeInTheDocument();
+    });
+
+    it("falls back one page when the current question-bank page becomes empty", async () => {
+        let secondPageRequests = 0;
+        vi.mocked(api.listQuestions).mockImplementation(async (params) => {
+            if (params.page === 1) {
+                secondPageRequests += 1;
+                return { ...emptyPage, totalElements: 20, totalPages: 1, number: 1 };
+            }
+            return {
+                ...emptyPage,
+                content: [question],
+                totalElements: 21,
+                totalPages: 2,
+                number: 0,
+                numberOfElements: 20,
+            };
+        });
+
+        render(() => <QuestionBankPage />);
+        await screen.findByText("第 1 / 2 页，共 21 条");
+        fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+
+        await waitFor(() => expect(secondPageRequests).toBe(1));
+        expect(await screen.findByText("第 1 / 2 页，共 21 条")).toBeInTheDocument();
+        expect(screen.getByText(question.stem)).toBeInTheDocument();
     });
 
     it("creates and renders FILL_IN_BLANK with multiple pipe-separated accepted answers", async () => {
